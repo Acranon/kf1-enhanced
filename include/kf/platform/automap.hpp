@@ -33,9 +33,16 @@ enum class AutomapMarkerKind : u8 {
 inline constexpr u8 automap_warp_teleport = 10;   // same-floor teleport
 inline constexpr u8 automap_warp_exit = 11;       // the way out (ending)
 
+inline constexpr u8 automap_no_item = 0xff;
+inline constexpr u8 automap_unlocked = 0xff;
+
 struct AutomapMarker {
     AutomapMarkerKind kind;
+    // Warp: destination (1..5 or the constants above). Fountain: 1 when full.
+    // LockedDoor and Chest: the lock's link id (automap_unlocked when open); a
+    // link below 128 that names an item is the key that opens it.
     u8 label;
+    u8 items[4];  // Item: the item id. Chest: its contents (automap_no_item when empty).
     float x, z;   // in cells; cell (x, z) spans [x, x+1)
 };
 

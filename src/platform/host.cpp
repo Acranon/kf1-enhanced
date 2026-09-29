@@ -43,7 +43,7 @@ struct HostState {
     Uint64 epoch, paused_ns, pause_start;
     double look_remainder_x, look_remainder_y;
     bool focused, mouse_captured, resume_mouse_capture;
-    bool paused, overlay_was_open;
+    bool paused, overlay_was_open, cursor_released, recapture_mouse;
     u32 quick_pressed;
     bool opening_load_pressed;
     bool run_toggled;
@@ -423,16 +423,27 @@ static void capture_frame_if_requested(int width, int height) {
 }
 
 // Opening or closing the overlay drops held game input so nothing stays pressed.
+// While the overlay or the full map wants the cursor, mouse capture is released,
+// and it returns when they close if the game had it.
 static void sync_overlay_input() {
     const bool open = ext::overlay_open();
-    if (open == host.overlay_was_open)
+    if (open != host.overlay_was_open) {
+        host.overlay_was_open = open;
+        input_clear(&host.input);
+        std::fill_n(host.pressed_keys, SDL_SCANCODE_COUNT, SDLK_UNKNOWN);
+        host.look_remainder_x = host.look_remainder_y = 0;
+    }
+    const bool cursor = ext::wants_cursor();
+    if (cursor == host.cursor_released)
         return;
-    host.overlay_was_open = open;
-    input_clear(&host.input);
-    std::fill_n(host.pressed_keys, SDL_SCANCODE_COUNT, SDLK_UNKNOWN);
-    host.look_remainder_x = host.look_remainder_y = 0;
-    if (open)
+    host.cursor_released = cursor;
+    if (cursor) {
+        host.recapture_mouse = mouse_is_captured();
+        input_disconnect(&host.input, InputDevice::mouse);
         SDL_SetWindowRelativeMouseMode(host.window, false);
+    } else if (host.recapture_mouse && host.focused && host.input_context == InputContext::Gameplay) {
+        SDL_SetWindowRelativeMouseMode(host.window, true);
+    }
 }
 #endif
 

@@ -91,7 +91,9 @@ original PlayStation presentation.
   what you have seen (or turn it off); carrying the Watchman's or Sorcerer's map
   reveals the whole floor. Doors, warps (labelled with their floor), save points,
   fountains and people are marked once seen. Items, chests and enemies can be
-  shown too; those markers are off by default because they are cheats.
+  shown too, as can the key each locked door or chest needs; those are off by
+  default because they are cheats. On the full map, scroll to zoom, drag to move
+  and point at a marker to see what it is (a chest lists its contents).
 - English menu labels when the English patch is detected.
 
 **Overlay and mods**

@@ -73,9 +73,14 @@ void automap_publish(void)
         * (6.2831853f / (KF_ANGLE_WRAP_MASK + 1));
 
     snapshot.marker_count = 0;
-    auto add = [&](kf::AutomapMarkerKind kind, float x, float z, u8 label = 0) {
-        if (snapshot.marker_count < kf::automap_marker_capacity)
-            snapshot.markers[snapshot.marker_count++] = {kind, label, x, z};
+    auto add = [&](kf::AutomapMarkerKind kind, float x, float z, u8 label = 0, const KfObjectId *items = nullptr,
+                   int item_count = 0) -> void {
+        if (snapshot.marker_count >= kf::automap_marker_capacity)
+            return;
+        kf::AutomapMarker marker{kind, label, {kf::automap_no_item, kf::automap_no_item, kf::automap_no_item, kf::automap_no_item}, x, z};
+        for (int i = 0; i < item_count && i < 4; ++i)
+            marker.items[i] = kf_enum_encode<u8>(items[i]);
+        snapshot.markers[snapshot.marker_count++] = marker;
     };
 
     for (int i = 0; i < KF_MAP_ROWS * KF_MAP_COLUMNS; ++i) {
@@ -137,9 +142,9 @@ void automap_publish(void)
                 placed = true;
             }
             if (placed) {
-                const bool locked = object.link.fields.link_id != KF_MAP_LINK_NONE;
-                add(locked ? kf::AutomapMarkerKind::LockedDoor : kf::AutomapMarkerKind::Door,
-                    (ax + bx) * 0.5f + 0.5f, (az + bz) * 0.5f + 0.5f);
+                const u8 link = object.link.fields.link_id;
+                add(link != KF_MAP_LINK_NONE ? kf::AutomapMarkerKind::LockedDoor : kf::AutomapMarkerKind::Door,
+                    (ax + bx) * 0.5f + 0.5f, (az + bz) * 0.5f + 0.5f, link);
             }
             break;
         }
@@ -151,15 +156,16 @@ void automap_publish(void)
             break;
         case KF_MAP_OBJECT_OP_HINGED_CONTAINER:
             if (!all_empty(object.link.hinged_container.item_ids))
-                add(kf::AutomapMarkerKind::Chest, x, z);
+                add(kf::AutomapMarkerKind::Chest, x, z, object.link.hinged_container.link_id,
+                    object.link.hinged_container.item_ids, KF_MAP_CONTAINER_ITEM_COUNT);
             break;
         case KF_MAP_OBJECT_OP_ITEM_CONTAINER:
             if (!all_empty(object.link.item_ids))
-                add(kf::AutomapMarkerKind::Chest, x, z);
+                add(kf::AutomapMarkerKind::Chest, x, z, kf::automap_unlocked, object.link.item_ids, KF_MAP_CONTAINER_ITEM_COUNT);
             break;
         case KF_MAP_OBJECT_OP_ITEM_PICKUP:
         case KF_MAP_OBJECT_OP_GOLD_PICKUP:
-            add(kf::AutomapMarkerKind::Item, x, z);
+            add(kf::AutomapMarkerKind::Item, x, z, 0, &object.object_id, 1);
             break;
         default:
             break;

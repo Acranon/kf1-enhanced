@@ -21,6 +21,8 @@ bool overlay_open();
 bool pause_requested();
 // The overlay or full map is showing while the game is held.
 bool redraw_while_paused();
+// The overlay or full map wants a free mouse cursor.
+bool wants_cursor();
 // File watching and settings persistence; cheap enough to call on every host poll.
 void poll();
 // Once per game-presented frame, before draw().

@@ -59,6 +59,7 @@ struct Settings {
     bool map_items = false;     // cheat markers
     bool map_chests = false;
     bool map_enemies = false;
+    bool map_key_hints = false; // cheat: name the key a locked door or chest needs
     float ui_scale = 1.0f;
     std::string ui_font;        // empty: first available system font
 };

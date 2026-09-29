@@ -429,6 +429,7 @@ bool pause_requested() {
     return (open && settings().pause_when_open) || (automap_full_open() && settings().map_pause);
 }
 bool redraw_while_paused() { return open || automap_full_open(); }
+bool wants_cursor() { return open || automap_full_open(); }
 
 ViewRect game_view() {
     int width = 0, height = 0;
@@ -510,6 +511,11 @@ bool process_event(const SDL_Event &event) {
     if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
         apply_render_settings();
     ImGui_ImplSDL3_ProcessEvent(&event);
+    // The full map takes the mouse (zoom, drag, hover); the keyboard still reaches the game.
+    const bool mouse_event = event.type == SDL_EVENT_MOUSE_MOTION || event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
+        || event.type == SDL_EVENT_MOUSE_BUTTON_UP || event.type == SDL_EVENT_MOUSE_WHEEL;
+    if (automap_full_open() && mouse_event)
+        return true;
     return open && is_input_event(event.type);
 }
 

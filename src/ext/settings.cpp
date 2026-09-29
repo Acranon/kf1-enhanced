@@ -114,6 +114,7 @@ void settings_load() {
     current.map_items = read_bool(map, "show_items", current.map_items);
     current.map_chests = read_bool(map, "show_chests", current.map_chests);
     current.map_enemies = read_bool(map, "show_enemies", current.map_enemies);
+    current.map_key_hints = read_bool(map, "key_hints", current.map_key_hints);
     const cJSON *overlay = cJSON_GetObjectItemCaseSensitive(document, "overlay");
     current.pause_when_open = read_bool(overlay, "pause_when_open", current.pause_when_open);
     current.ui_scale = static_cast<float>(read_number(overlay, "ui_scale", current.ui_scale));
@@ -170,6 +171,7 @@ void settings_save_if_dirty() {
     write_value(map, "show_items", cJSON_CreateBool(current.map_items));
     write_value(map, "show_chests", cJSON_CreateBool(current.map_chests));
     write_value(map, "show_enemies", cJSON_CreateBool(current.map_enemies));
+    write_value(map, "key_hints", cJSON_CreateBool(current.map_key_hints));
     cJSON *overlay = object_entry(document, "overlay");
     write_value(overlay, "pause_when_open", cJSON_CreateBool(current.pause_when_open));
     write_value(overlay, "ui_scale", cJSON_CreateNumber(current.ui_scale));
