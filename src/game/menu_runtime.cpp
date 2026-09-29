@@ -1175,6 +1175,194 @@ enum {
     MENU_INVENTORY_QUANTITY_VALUE_X = 279
 };
 
+// PC extension: equipment stats beside the item preview (inventory, equip and
+// shop screens). While an equip screen is open, rows show the current total and
+// the total with the highlighted item, tinted by whether it goes up or down.
+namespace {
+enum class MenuItemSlot { None, Weapon, Head, Body, Shield, Arm, Leg, Accessory };
+KfEquipmentMenuCategory menu_stats_compare = KF_EQUIP_MENU_NONE;
+
+enum {
+    MENU_STATS_LABEL_X = 174,
+    MENU_STATS_VALUE_X = 206,
+    MENU_STATS_NEW_VALUE_X = 232,
+    MENU_STATS_ROW_STEP = 13,
+    MENU_STATS_DIGITS = 3,
+    MENU_STATS_LABEL_CELLS = 2
+};
+constexpr s32 MENU_STATS_MODEL_X = 1624;
+constexpr s32 MENU_STATS_MODEL_Y = 600;
+constexpr s32 MENU_STATS_MODEL_Z = 2800;
+constexpr s32 menu_preview_translation[3] = {
+    MENU_ITEM_PREVIEW_TRANSLATION_X, MENU_ITEM_PREVIEW_TRANSLATION_Y, MENU_ITEM_PREVIEW_TRANSLATION_Z};
+
+MenuItemSlot menu_item_slot(KfObjectId id)
+{
+    const s32 code = kf_enum_encode<u8>(id);
+    auto in = [code](KfObjectId first, KfObjectId end) {
+        return code >= kf_enum_encode<u8>(first) && code < kf_enum_encode<u8>(end);
+    };
+    if (id == KF_OBJECT_NONE)
+        return MenuItemSlot::None;
+    if (in(KF_ITEM_SHORT_SWORD, KF_ITEM_IRON_MASK)) return MenuItemSlot::Weapon;
+    if (in(KF_ITEM_IRON_MASK, KF_ITEM_BREASTPLATE)) return MenuItemSlot::Head;
+    if (in(KF_ITEM_BREASTPLATE, KF_ITEM_SMALL_SHIELD)) return MenuItemSlot::Body;
+    if (in(KF_ITEM_SMALL_SHIELD, KF_ITEM_GAUNTLET)) return MenuItemSlot::Shield;
+    if (in(KF_ITEM_GAUNTLET, KF_ITEM_IRON_BOOTS)) return MenuItemSlot::Arm;
+    if (in(KF_ITEM_IRON_BOOTS, KF_ITEM_GOLD_COIN)) return MenuItemSlot::Leg;
+    if (code >= kf_enum_encode<u8>(KF_ITEM_LIGHT_RING) && code <= kf_enum_encode<u8>(KF_ITEM_GOLD_CROSS))
+        return MenuItemSlot::Accessory;
+    return MenuItemSlot::None;
+}
+
+MenuItemSlot menu_category_slot(KfEquipmentMenuCategory category)
+{
+    switch (category) {
+    case KF_EQUIP_MENU_WEAPON: return MenuItemSlot::Weapon;
+    case KF_EQUIP_MENU_SHIELD: return MenuItemSlot::Shield;
+    case KF_EQUIP_MENU_HEAD: return MenuItemSlot::Head;
+    case KF_EQUIP_MENU_BODY: return MenuItemSlot::Body;
+    case KF_EQUIP_MENU_ARM: return MenuItemSlot::Arm;
+    case KF_EQUIP_MENU_LEG: return MenuItemSlot::Leg;
+    case KF_EQUIP_MENU_ACCESSORY: return MenuItemSlot::Accessory;
+    default: return MenuItemSlot::None;
+    }
+}
+
+// Totals with `id` (or nothing) in `slot`, by the game's own formula.
+KfPlayerState menu_stats_with(MenuItemSlot slot, KfObjectId id)
+{
+    KfPlayerState p = player_state;
+    switch (slot) {
+    case MenuItemSlot::Weapon: p.equipped_weapon_id = id; break;
+    case MenuItemSlot::Head: p.equipped_head_armor_id = id; break;
+    case MenuItemSlot::Body: p.equipped_body_armor_id = id; break;
+    case MenuItemSlot::Shield: p.equipped_shield_id = id; break;
+    case MenuItemSlot::Arm: p.equipped_arm_armor_id = id; break;
+    case MenuItemSlot::Leg: p.equipped_leg_armor_id = id; break;
+    case MenuItemSlot::Accessory: p.equipped_accessory_id = id; break;
+    case MenuItemSlot::None: break;
+    }
+    player_compute_combat_stats(p);
+    return p;
+}
+
+enum class MenuStatGroup { Attack, Defense, Power };
+struct MenuStat {
+    const s16 *const *label;   // a menu_glyphs sequence, switched with the language
+    MenuStatGroup group;
+    s32 (*value)(const KfPlayerState &);
+};
+
+const MenuStat menu_stats[] = {
+    {&menu_glyphs::cutting, MenuStatGroup::Attack, [](const KfPlayerState &p) -> s32 { return p.cutting_attack; }},
+    {&menu_glyphs::striking, MenuStatGroup::Attack, [](const KfPlayerState &p) -> s32 { return p.striking_attack; }},
+    {&menu_glyphs::piercing, MenuStatGroup::Attack, [](const KfPlayerState &p) -> s32 { return p.piercing_attack; }},
+    {&menu_glyphs::holy, MenuStatGroup::Attack, [](const KfPlayerState &p) -> s32 { return p.holy_attack; }},
+    {&menu_glyphs::fire, MenuStatGroup::Attack, [](const KfPlayerState &p) -> s32 { return p.fire_attack; }},
+    {&menu_glyphs::cutting, MenuStatGroup::Defense, [](const KfPlayerState &p) -> s32 { return p.cutting_defense; }},
+    {&menu_glyphs::striking, MenuStatGroup::Defense, [](const KfPlayerState &p) -> s32 { return p.striking_defense; }},
+    {&menu_glyphs::piercing, MenuStatGroup::Defense, [](const KfPlayerState &p) -> s32 { return p.piercing_defense; }},
+    {&menu_glyphs::poison_resistance, MenuStatGroup::Defense, [](const KfPlayerState &p) -> s32 { return p.poison_resistance; }},
+    {&menu_glyphs::magic_defense, MenuStatGroup::Defense, [](const KfPlayerState &p) -> s32 { return p.magic_defense; }},
+    {&menu_glyphs::fire, MenuStatGroup::Defense, [](const KfPlayerState &p) -> s32 { return p.fire_defense; }},
+    {&menu_glyphs::physical_power, MenuStatGroup::Power, [](const KfPlayerState &p) -> s32 { return p.physical_power; }},
+    {&menu_glyphs::magic_power, MenuStatGroup::Power, [](const KfPlayerState &p) -> s32 { return p.magic; }},
+};
+
+// The first word of a status-screen label: the English patch pads some labels
+// with blanks and a shared suffix that would not fit beside the preview.
+void menu_stats_label(MenuGlyphString &gs, const s16 *sequence)
+{
+    s32 count = 0;
+    for (s32 i = 0; i < MENU_GLYPHS_PER_ROW && sequence[i] != MENU_TEXT_END && count < MENU_STATS_LABEL_CELLS; i++) {
+        if (sequence[i] == MENU_TEXT_BLANK) {
+            if (count > 0)
+                break;
+            continue;
+        }
+        gs.glyphs.codes[count++] = sequence[i];
+    }
+    gs.glyphs.codes[count] = MENU_TEXT_END;
+    menu_draw_string(&menu_assets.glyph_atlas, &gs);
+}
+}
+
+// Multiplies the colour of numbers drawn by menu_draw_number.
+static float menu_number_tint[3] = {1.0f, 1.0f, 1.0f};
+
+namespace {
+void menu_stats_number(MenuGlyphString &gs, s32 x, s32 value, s32 compare_to, bool compare, bool dim = false)
+{
+    gs.position.x = x;
+    if (!compare && dim) {
+        menu_number_tint[0] = menu_number_tint[1] = menu_number_tint[2] = 0.72f;
+    } else if (compare && value > compare_to) {
+        menu_number_tint[0] = 0.55f; menu_number_tint[1] = 1.35f; menu_number_tint[2] = 0.55f;
+    } else if (compare && value < compare_to) {
+        menu_number_tint[0] = 1.45f; menu_number_tint[1] = 0.5f; menu_number_tint[2] = 0.45f;
+    }
+    menu_format_number(value < 0 ? 0 : value, MENU_STATS_DIGITS, KF_FORMAT_PAD_SPACES, gs.glyphs.codes);
+    menu_draw_number(&menu_assets.number_atlas, &gs);
+    menu_number_tint[0] = menu_number_tint[1] = menu_number_tint[2] = 1.0f;
+}
+
+bool menu_stats_available(KfObjectId item_id)
+{
+    return menu_category_slot(menu_stats_compare) != MenuItemSlot::None || menu_item_slot(item_id) != MenuItemSlot::None;
+}
+
+// Draws the rows from y down; returns false when the item has nothing to show.
+bool menu_draw_item_stats(KfObjectId item_id, s32 y)
+{
+    const MenuItemSlot compare_slot = menu_category_slot(menu_stats_compare);
+    const bool compare = compare_slot != MenuItemSlot::None;
+    const MenuItemSlot slot = compare ? compare_slot : menu_item_slot(item_id);
+    if (slot == MenuItemSlot::None)
+        return false;
+    // One item: what it adds (totals with it minus without it). Compare: totals now and with it.
+    const KfPlayerState before = compare ? menu_stats_with(MenuItemSlot::None, KF_OBJECT_NONE)
+                                         : menu_stats_with(slot, KF_OBJECT_NONE);
+    const KfPlayerState after = menu_stats_with(slot, item_id);
+    const MenuStatGroup group = slot == MenuItemSlot::Weapon ? MenuStatGroup::Attack : MenuStatGroup::Defense;
+
+    MenuGlyphString gs;
+    gs.position.x = MENU_STATS_LABEL_X;
+    gs.position.y = y;
+    bool any = false;
+    for (const auto &stat : menu_stats) {
+        const s32 now = stat.value(before), with = stat.value(after);
+        bool shown = now != with;
+        // Weapons and armour in the equip screen list their whole group, so
+        // the totals can be read even where this item adds nothing.
+        if (compare && stat.group == group && slot != MenuItemSlot::Accessory)
+            shown = now != 0 || with != 0;
+        if (!shown)
+            continue;
+        if (!any) {
+            menu_stats_label(gs, group == MenuStatGroup::Attack ? menu_glyphs::attack : menu_glyphs::defense);
+            gs.position.y += MENU_STATS_ROW_STEP + 2;
+            any = true;
+        }
+        gs.position.x = MENU_STATS_LABEL_X;
+        menu_stats_label(gs, *stat.label);
+        if (compare) {
+            menu_stats_number(gs, MENU_STATS_VALUE_X, now, now, false, true);   // current, dimmed
+            menu_stats_number(gs, MENU_STATS_NEW_VALUE_X, with, now, true);
+        } else {
+            menu_stats_number(gs, MENU_STATS_VALUE_X, with - now, 0, false);
+        }
+        gs.position.y += MENU_STATS_ROW_STEP;
+    }
+    return any;
+}
+}
+
+void menu_set_equipment_compare(KfEquipmentMenuCategory category)
+{
+    menu_stats_compare = category;
+}
+
 void menu_item_model_preview(KfObjectId item_id)
 {
     MenuGlyphString gs;
@@ -1185,10 +1373,13 @@ void menu_item_model_preview(KfObjectId item_id)
     const MenuGlyphRow *name;
     s32 i;
 
+    // Stats share the panel: the model moves right and a little further away.
+    const bool stats = menu_stats_available(item_id)
+        && menu_draw_item_stats(item_id, MENU_ITEM_PREVIEW_NAME_Y + 2 * MENU_ITEM_PREVIEW_LINE_HEIGHT + 2);
     if (item_id != KF_OBJECT_NONE) {
-        rot.t[0] = MENU_ITEM_PREVIEW_TRANSLATION_X;
-        rot.t[1] = MENU_ITEM_PREVIEW_TRANSLATION_Y;
-        rot.t[2] = MENU_ITEM_PREVIEW_TRANSLATION_Z;
+        rot.t[0] = stats ? MENU_STATS_MODEL_X : menu_preview_translation[0];
+        rot.t[1] = stats ? MENU_STATS_MODEL_Y : menu_preview_translation[1];
+        rot.t[2] = stats ? MENU_STATS_MODEL_Z : menu_preview_translation[2];
         menu_item_preview_rotation.vy =
             (menu_item_preview_rotation.vy + MENU_ITEM_PREVIEW_YAW_STEP)
             & KF_ANGLE_WRAP_MASK;
@@ -1253,9 +1444,11 @@ void menu_draw_item_detail(KfObjectId item_id, KfItemStockBank shop_bank, KfTrad
         return;
     }
 
-    rot.t[0] = MENU_ITEM_PREVIEW_TRANSLATION_X;
-    rot.t[1] = MENU_ITEM_PREVIEW_TRANSLATION_Y;
-    rot.t[2] = MENU_ITEM_PREVIEW_TRANSLATION_Z;
+    // Shops show the price and owned rows first, then the item's stats.
+    const bool stats = menu_draw_item_stats(item_id, MENU_ITEM_PREVIEW_NAME_Y + 3 * MENU_ITEM_PREVIEW_LINE_HEIGHT + 2);
+    rot.t[0] = stats ? MENU_STATS_MODEL_X : menu_preview_translation[0];
+    rot.t[1] = stats ? MENU_STATS_MODEL_Y : menu_preview_translation[1];
+    rot.t[2] = stats ? MENU_STATS_MODEL_Z : menu_preview_translation[2];
     menu_item_preview_rotation.vy =
         (menu_item_preview_rotation.vy + MENU_ITEM_PREVIEW_YAW_STEP)
         & KF_ANGLE_WRAP_MASK;
@@ -1919,6 +2112,11 @@ void menu_draw_number(
         auto face = menu_text_glyph(atlas, label, xoff);
         const s32 v = label->glyphs.codes[i] * MENU_NUMBER_CELL_HEIGHT;
         render_face_uv_rectangle(&face, atlas->u, v, atlas->u + atlas->width, v + atlas->height);
+        for (auto &vertex : face.vertices) {
+            vertex.r *= menu_number_tint[0];
+            vertex.g *= menu_number_tint[1];
+            vertex.b *= menu_number_tint[2];
+        }
         menu_submit_template(face, MENU_CONTENT_OT_DEPTH);
     }
 }

@@ -240,128 +240,135 @@ static void player_learn_trained_magic(KfEffectKind spell, s32 required_base_mag
     }
 }
 
-void player_recalculate_combat_stats(void)
+// Combat totals for the equipment in p, without side effects (the equipment
+// screens preview them too).
+void player_compute_combat_stats(KfPlayerState &p)
 {
     const KfWeaponRecord *weapon;
     const KfArmorRecord *armor;
     s32 power;
 
-    player_state.cutting_attack = 0;
-    player_state.striking_attack = 0;
-    player_state.piercing_attack = 0;
-    player_state.holy_attack = 0;
-    player_state.fire_attack = 0;
-    player_state.cutting_defense = 0;
-    player_state.striking_defense = 0;
-    player_state.piercing_defense = 0;
-    player_state.poison_resistance = 0;
-    player_state.magic_defense = 0;
-    player_state.fire_defense = 0;
-    player_state.physical_power = player_state.base_physical_power;
-    player_state.magic = player_state.base_magic;
-    if ((player_state.status_effect_flags & KF_PLAYER_STATUS_CURSE) != KF_PLAYER_STATUS_NONE) {
-        power = player_state.physical_power - CURSE_PHYSICAL_POWER_PENALTY;
+    p.cutting_attack = 0;
+    p.striking_attack = 0;
+    p.piercing_attack = 0;
+    p.holy_attack = 0;
+    p.fire_attack = 0;
+    p.cutting_defense = 0;
+    p.striking_defense = 0;
+    p.piercing_defense = 0;
+    p.poison_resistance = 0;
+    p.magic_defense = 0;
+    p.fire_defense = 0;
+    p.physical_power = p.base_physical_power;
+    p.magic = p.base_magic;
+    if ((p.status_effect_flags & KF_PLAYER_STATUS_CURSE) != KF_PLAYER_STATUS_NONE) {
+        power = p.physical_power - CURSE_PHYSICAL_POWER_PENALTY;
         if (power < 0) {
             power = 0;
         }
-        player_state.physical_power = power;
+        p.physical_power = power;
     }
-    if (player_state.equipped_weapon_id != KF_OBJECT_NONE) {
-        weapon = &weapon_records.entries[kf_enum_encode<u8>(player_state.equipped_weapon_id)];
-        player_state.cutting_attack += weapon->attack_components[KF_COMBAT_COMPONENT_CUTTING];
-        player_state.striking_attack += weapon->attack_components[KF_COMBAT_COMPONENT_STRIKING];
-        player_state.piercing_attack += weapon->attack_components[KF_COMBAT_COMPONENT_PIERCING];
-        player_state.holy_attack += weapon->attack_components[KF_COMBAT_COMPONENT_HOLY];
-        player_state.fire_attack += weapon->attack_components[KF_COMBAT_COMPONENT_FIRE];
+    if (p.equipped_weapon_id != KF_OBJECT_NONE) {
+        weapon = &weapon_records.entries[kf_enum_encode<u8>(p.equipped_weapon_id)];
+        p.cutting_attack += weapon->attack_components[KF_COMBAT_COMPONENT_CUTTING];
+        p.striking_attack += weapon->attack_components[KF_COMBAT_COMPONENT_STRIKING];
+        p.piercing_attack += weapon->attack_components[KF_COMBAT_COMPONENT_PIERCING];
+        p.holy_attack += weapon->attack_components[KF_COMBAT_COMPONENT_HOLY];
+        p.fire_attack += weapon->attack_components[KF_COMBAT_COMPONENT_FIRE];
     }
-    if (player_state.equipped_head_armor_id != KF_OBJECT_NONE) {
-        armor = &armor_records.entries[kf_enum_encode<u8>(player_state.equipped_head_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.striking_defense += armor->striking_defense;
-        player_state.piercing_defense += armor->piercing_defense;
-        player_state.poison_resistance += armor->poison_resistance;
-        player_state.magic_defense += armor->magic_defense;
-        player_state.fire_defense += armor->fire_defense;
+    if (p.equipped_head_armor_id != KF_OBJECT_NONE) {
+        armor = &armor_records.entries[kf_enum_encode<u8>(p.equipped_head_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
+        p.cutting_defense += armor->cutting_defense;
+        p.cutting_defense += armor->cutting_defense;
+        p.striking_defense += armor->striking_defense;
+        p.piercing_defense += armor->piercing_defense;
+        p.poison_resistance += armor->poison_resistance;
+        p.magic_defense += armor->magic_defense;
+        p.fire_defense += armor->fire_defense;
     }
-    if (player_state.equipped_body_armor_id != KF_OBJECT_NONE) {
-        armor = &armor_records.entries[kf_enum_encode<u8>(player_state.equipped_body_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.striking_defense += armor->striking_defense;
-        player_state.piercing_defense += armor->piercing_defense;
-        player_state.poison_resistance += armor->poison_resistance;
-        player_state.magic_defense += armor->magic_defense;
-        player_state.fire_defense += armor->fire_defense;
+    if (p.equipped_body_armor_id != KF_OBJECT_NONE) {
+        armor = &armor_records.entries[kf_enum_encode<u8>(p.equipped_body_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
+        p.cutting_defense += armor->cutting_defense;
+        p.cutting_defense += armor->cutting_defense;
+        p.striking_defense += armor->striking_defense;
+        p.piercing_defense += armor->piercing_defense;
+        p.poison_resistance += armor->poison_resistance;
+        p.magic_defense += armor->magic_defense;
+        p.fire_defense += armor->fire_defense;
     }
-    if (player_state.equipped_arm_armor_id != KF_OBJECT_NONE) {
-        armor = &armor_records.entries[kf_enum_encode<u8>(player_state.equipped_arm_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.striking_defense += armor->striking_defense;
-        player_state.piercing_defense += armor->piercing_defense;
-        player_state.poison_resistance += armor->poison_resistance;
-        player_state.magic_defense += armor->magic_defense;
-        player_state.fire_defense += armor->fire_defense;
+    if (p.equipped_arm_armor_id != KF_OBJECT_NONE) {
+        armor = &armor_records.entries[kf_enum_encode<u8>(p.equipped_arm_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
+        p.cutting_defense += armor->cutting_defense;
+        p.cutting_defense += armor->cutting_defense;
+        p.striking_defense += armor->striking_defense;
+        p.piercing_defense += armor->piercing_defense;
+        p.poison_resistance += armor->poison_resistance;
+        p.magic_defense += armor->magic_defense;
+        p.fire_defense += armor->fire_defense;
     }
-    if (player_state.equipped_leg_armor_id != KF_OBJECT_NONE) {
-        armor = &armor_records.entries[kf_enum_encode<u8>(player_state.equipped_leg_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.striking_defense += armor->striking_defense;
-        player_state.piercing_defense += armor->piercing_defense;
-        player_state.poison_resistance += armor->poison_resistance;
-        player_state.magic_defense += armor->magic_defense;
-        player_state.fire_defense += armor->fire_defense;
+    if (p.equipped_leg_armor_id != KF_OBJECT_NONE) {
+        armor = &armor_records.entries[kf_enum_encode<u8>(p.equipped_leg_armor_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
+        p.cutting_defense += armor->cutting_defense;
+        p.cutting_defense += armor->cutting_defense;
+        p.striking_defense += armor->striking_defense;
+        p.piercing_defense += armor->piercing_defense;
+        p.poison_resistance += armor->poison_resistance;
+        p.magic_defense += armor->magic_defense;
+        p.fire_defense += armor->fire_defense;
     }
-    if (player_state.equipped_shield_id != KF_OBJECT_NONE) {
-        armor = &armor_records.entries[kf_enum_encode<u8>(player_state.equipped_shield_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.cutting_defense += armor->cutting_defense;
-        player_state.striking_defense += armor->striking_defense;
-        player_state.piercing_defense += armor->piercing_defense;
-        player_state.poison_resistance += armor->poison_resistance;
-        player_state.magic_defense += armor->magic_defense;
-        player_state.fire_defense += armor->fire_defense;
+    if (p.equipped_shield_id != KF_OBJECT_NONE) {
+        armor = &armor_records.entries[kf_enum_encode<u8>(p.equipped_shield_id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK)];
+        p.cutting_defense += armor->cutting_defense;
+        p.cutting_defense += armor->cutting_defense;
+        p.striking_defense += armor->striking_defense;
+        p.piercing_defense += armor->piercing_defense;
+        p.poison_resistance += armor->poison_resistance;
+        p.magic_defense += armor->magic_defense;
+        p.fire_defense += armor->fire_defense;
     }
-    switch (player_state.equipped_accessory_id) {
+    switch (p.equipped_accessory_id) {
     case KF_ITEM_LIGHT_RING:
-        player_state.holy_attack += LIGHT_RING_HOLY_ATTACK_BONUS;
+        p.holy_attack += LIGHT_RING_HOLY_ATTACK_BONUS;
         break;
     case KF_ITEM_MOON_AMULET:
-        player_state.magic_defense += MOON_AMULET_MAGIC_DEFENSE_BONUS;
+        p.magic_defense += MOON_AMULET_MAGIC_DEFENSE_BONUS;
         break;
     case KF_ITEM_WIND_BLADE_BRACELET:
-        player_state.fire_defense += WIND_BLADE_BRACELET_FIRE_DEFENSE_BONUS;
+        p.fire_defense += WIND_BLADE_BRACELET_FIRE_DEFENSE_BONUS;
         break;
     case KF_ITEM_TWO_HEADED_DRAGON_RING:
-        player_state.magic += TWO_HEADED_DRAGON_RING_MAGIC_BONUS;
+        p.magic += TWO_HEADED_DRAGON_RING_MAGIC_BONUS;
         break;
     case KF_ITEM_VERDITE:
-        player_state.magic += VERDITE_EQUIPPED_MAGIC_BONUS;
+        p.magic += VERDITE_EQUIPPED_MAGIC_BONUS;
         break;
     case KF_ITEM_GOLD_CROSS:
-        player_state.holy_attack += GOLD_CROSS_HOLY_ATTACK_BONUS;
+        p.holy_attack += GOLD_CROSS_HOLY_ATTACK_BONUS;
         break;
     }
-    if (player_state.equipped_head_armor_id == KF_ITEM_BLACK_MASK) {
-        player_state.physical_power -= BLACK_MASK_PHYSICAL_POWER_PENALTY;
+    if (p.equipped_head_armor_id == KF_ITEM_BLACK_MASK) {
+        p.physical_power -= BLACK_MASK_PHYSICAL_POWER_PENALTY;
     }
-    if ((player_state.status_effect_flags & KF_PLAYER_STATUS_FIRE_DEFENSE_BOOST) != KF_PLAYER_STATUS_NONE) {
-        player_state.fire_defense += FIRE_DEFENSE_STATUS_BONUS;
+    if ((p.status_effect_flags & KF_PLAYER_STATUS_FIRE_DEFENSE_BOOST) != KF_PLAYER_STATUS_NONE) {
+        p.fire_defense += FIRE_DEFENSE_STATUS_BONUS;
     }
+    if (p.physical_power >= KF_PLAYER_POWER_MAX + 1) {
+        p.physical_power = KF_PLAYER_POWER_MAX;
+    }
+    if (p.magic >= KF_PLAYER_POWER_MAX + 1) {
+        p.magic = KF_PLAYER_POWER_MAX;
+    }
+}
+
+void player_recalculate_combat_stats(void)
+{
+    player_compute_combat_stats(player_state);
     const auto &healing = effect_state.magic.entries[kf_enum_encode<u8>(KF_MAGIC_HEALING)];
     if (healing.learned != KF_MAGIC_UNLEARNED) {
         player_learn_trained_magic(KF_MAGIC_DISPOISON, DISPOISON_REQUIRED_BASE_MAGIC);
     }
     player_learn_trained_magic(KF_MAGIC_FIRE_WALL, FIRE_WALL_REQUIRED_BASE_MAGIC);
     player_learn_trained_magic(KF_MAGIC_LIGHTNING_BOLT, LIGHTNING_BOLT_REQUIRED_BASE_MAGIC);
-    if (player_state.physical_power >= KF_PLAYER_POWER_MAX + 1) {
-        player_state.physical_power = KF_PLAYER_POWER_MAX;
-    }
-    if (player_state.magic >= KF_PLAYER_POWER_MAX + 1) {
-        player_state.magic = KF_PLAYER_POWER_MAX;
-    }
 }
 
 void player_increment_physical_power_training(void)

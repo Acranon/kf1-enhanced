@@ -522,10 +522,44 @@ void host_wait_update(UpdatePacer &pacer) {
     }
 }
 
+// KF_TEST_INPUT="poll:action:polls,...": holds an action from a given
+// host_read_buttons call for a number of calls, for automated menu tests.
+// Actions: up, down, left, right, confirm, back, inventory.
+static u32 test_input_actions() {
+    struct Step { int start, length; Action action; };
+    static std::vector<Step> steps;
+    static int polls = -1;
+    if (polls < 0) {
+        polls = 0;
+        const char *script = std::getenv("KF_TEST_INPUT");
+        const struct { const char *name; Action action; } names[] = {
+            {"up", Action::forward}, {"down", Action::backward}, {"left", Action::turn_left},
+            {"right", Action::turn_right}, {"confirm", Action::confirm}, {"back", Action::back},
+            {"inventory", Action::inventory}};
+        while (script && *script) {
+            int start = 0, length = 0;
+            char name[16] = {};
+            if (std::sscanf(script, "%d:%15[a-z]:%d", &start, name, &length) == 3)
+                for (const auto &entry : names)
+                    if (std::strcmp(entry.name, name) == 0)
+                        steps.push_back({start, length, entry.action});
+            script = std::strchr(script, ',');
+            if (script)
+                ++script;
+        }
+    }
+    const int now = polls++;
+    u32 held = 0;
+    for (const auto &step : steps)
+        if (now >= step.start && now < step.start + step.length)
+            held |= action_bit(step.action);
+    return held;
+}
+
 u32 host_read_buttons() {
     host_poll();
     // Original game code samples held buttons and derives its own edges.
-    const u32 actions = host.input.pending.held;
+    const u32 actions = host.input.pending.held | test_input_actions();
     // Quick save/load only act in gameplay; presses in menus or scenes are dropped.
     if (host.input_context == InputContext::Gameplay)
         host.quick_pressed |= host.input.pending.pressed & (action_bit(Action::quick_save) | action_bit(Action::quick_load));

@@ -39,6 +39,18 @@ void game_main_loop(void)
     map_event_timers_reset();
     common_resources_load();
     game_initialize_session();
+    // KF_TEST_GIVE=<item id>,...: adds items for automated menu tests.
+    if (const char *give = std::getenv("KF_TEST_GIVE")) {
+        for (const char *cursor = give; *cursor;) {
+            const int id = std::atoi(cursor);
+            if (id >= 0 && id < KF_ITEM_COUNT)
+                item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)][id]++;
+            const char *comma = std::strchr(cursor, ',');
+            if (!comma)
+                break;
+            cursor = comma + 1;
+        }
+    }
     memory_set_allocation_mode(memory_arena, KF_MEMORY_REBASE_ARENA);
     map_load_floor_wrapper();
     frame_pacer_last_tick = kf::host_clock_tick();

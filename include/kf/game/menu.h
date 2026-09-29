@@ -364,6 +364,8 @@ extern u32 menu_enter_mode(KfMenuMode menu_mode, KfItemStockBank shop_bank);
 extern void menu_equip_select(KfEquipmentMenuCategory equipment_category);
 extern void menu_frame_begin(void);
 extern void menu_item_model_preview(KfObjectId item_id);
+// PC extension: while set, item previews compare equipment totals for this slot.
+extern void menu_set_equipment_compare(KfEquipmentMenuCategory category);
 extern void menu_list_init(KfMenuList *list, KfMenuWindowKind window_kind, s32 row);
 extern KfMenuResult menu_list_interact(
     const KfMenuList *list, KfMenuConfirmKind confirm_kind, KfMenuPreviewMode preview_mode,

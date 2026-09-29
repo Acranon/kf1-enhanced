@@ -86,6 +86,7 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
             return;
     }
 
+    menu_set_equipment_compare(equipment_category);
     for (;;) {
         if (confirm == KF_MENU_CONFIRM_REQUESTED) {
             if (menu_list_interact(&ctx, KF_MENU_CONFIRM_EQUIP,
@@ -109,8 +110,10 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
                 selection = kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED);
             }
         } else if (menu_list_handle_navigation(ctx, input, prev)) {
-            if (menu_load_item_model(codes[ctx.selected_index]) != KF_RESOURCE_LOADED)
+            if (menu_load_item_model(codes[ctx.selected_index]) != KF_RESOURCE_LOADED) {
+                menu_set_equipment_compare(KF_EQUIP_MENU_NONE);
                 return;
+            }
         } else if (kf::button_pressed(input, prev, kf::Button::Confirm)) {
             menu_play_input_sound(MENU_SOUND_CONFIRM);
             confirm = KF_MENU_CONFIRM_REQUESTED;
@@ -126,6 +129,7 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
         menu_present_frame();
     }
 
+    menu_set_equipment_compare(KF_EQUIP_MENU_NONE);
     menu_release_item_model();
     if (selection != kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED)) {
         switch (equipment_category) {

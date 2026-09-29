@@ -218,6 +218,7 @@ extern void player_apply_radial_damage(
     u16 scale_q12, u16 multiplier_tenths);
 extern s32 player_calculate_damage_component(s32 base_power, s32 defense, s32 attack);
 extern void player_clear_motion(void);
+extern void player_compute_combat_stats(KfPlayerState &p);
 extern void player_death_apply_visual_fade(const MATRIX *color_from, s32 blend);
 extern void player_death_begin(void);
 extern void player_death_restart(void);
