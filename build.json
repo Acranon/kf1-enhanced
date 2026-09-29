@@ -38,6 +38,7 @@
         "src/game/menu_select.cpp",
         "src/game/menu_runtime.cpp",
         "src/game/save_system.cpp",
+        "src/game/automap_feed.cpp",
         "src/game/actor.cpp",
         "src/game/actor_behavior.cpp",
         "src/game/actor_pool.cpp",

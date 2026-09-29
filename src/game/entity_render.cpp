@@ -55,6 +55,21 @@ void render_actor_sprite(KfEffectRecord *sprite, const MATRIX *lights)
     if (sprite->render_id.model == KF_EFFECT_MODEL_NONE) {
         return;
     }
+    // PC extension (dynamic lighting): fire and lightning projectiles light their surroundings.
+    const auto billboard = sprite->render_id.billboard;
+    if (sprite->animation_clip == KF_ANIMATION_CLIP_NONE) {
+        if (billboard <= KF_EFFECT_BILLBOARD_FIRE_BALL_FRAME_4) {
+            render_publish_light(sprite->position.vx, sprite->position.vy, sprite->position.vz,
+                6000.0f, 1.2f, 0.55f, 0.2f, 0.6f);
+        } else if (billboard == KF_EFFECT_BILLBOARD_LIGHTNING_BOLT || billboard == KF_EFFECT_BILLBOARD_LIGHTNING_BOLT_FRAME_1
+                   || billboard == KF_EFFECT_BILLBOARD_LIGHTNING_BOLT_ALTERNATE
+                   || billboard == KF_EFFECT_BILLBOARD_LIGHTNING_ALTERNATE_FRAME_1
+                   || (billboard >= KF_EFFECT_BILLBOARD_LIGHTNING_IMPACT && billboard <= KF_EFFECT_BILLBOARD_LIGHTNING_IMPACT_FRAME_2)
+                   || (billboard >= KF_EFFECT_BILLBOARD_LIGHTNING_IMPACT_ALTERNATE && billboard <= KF_EFFECT_BILLBOARD_IMPACT_ALTERNATE_FRAME_2)) {
+            render_publish_light(sprite->position.vx, sprite->position.vy, sprite->position.vz,
+                6000.0f, 0.55f, 0.7f, 1.3f, 0.9f);
+        }
+    }
     screen = VECTOR{
         sprite->position.vx - game_graphics_runtime.render_state.view_position.vx,
         sprite->position.vy - game_graphics_runtime.render_state.view_position.vy,

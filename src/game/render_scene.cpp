@@ -14,6 +14,22 @@ struct RenderCellOrigin {
     u16 z;
 };
 
+// PC extension (dynamic lighting): publishes a point light at a world position,
+// converted to camera space with the current view rotation.
+void render_publish_light(s32 x, s32 y, s32 z, float radius, float r, float g, float b, float flicker)
+{
+    const auto &view = game_graphics_runtime.render_state;
+    const s32 dx = x - view.view_position.vx, dy = y - view.view_position.vy, dz = z - view.view_position.vz;
+    constexpr s32 reach = 30000;
+    if (dx < -reach || dx > reach || dy < -reach || dy > reach || dz < -reach || dz > reach)
+        return;
+    MATRIX rotation = view.view_matrix;
+    rotation.t[0] = rotation.t[1] = rotation.t[2] = 0;
+    const VECTOR camera = kf::render_transform_point(rotation, VECTOR{dx, dy, dz}.narrowed());
+    kf::host_add_light(static_cast<float>(camera.vx), static_cast<float>(camera.vy), static_cast<float>(camera.vz),
+        radius, r, g, b, flicker, static_cast<u32>(x * 73856093) ^ static_cast<u32>(z * 19349663));
+}
+
 static bool render_cell_is_visible(s32 cell_x, s32 cell_z, RenderCellOrigin origin)
 {
     // Narrow before checking bounds, including cells before the window origin.
@@ -77,6 +93,11 @@ void render_entities(void)
                 item.position_x / KF_MAP_TILE_SIZE, item.position_z / KF_MAP_TILE_SIZE, origin)) {
             render_floor_item(game_graphics_runtime.render_state, floor_item_sprites,
                 render_enqueue_sprite, &item, &render_light_matrices[KF_RENDER_LIGHT_FLOOR_ITEM]);
+            // Floor items are the torch and brazier flames; light from the flame's middle.
+            constexpr s32 flame_centre_height = 480;
+            constexpr float torch_radius = 5200.0f;
+            render_publish_light(item.position_x, item.position_y - flame_centre_height, item.position_z,
+                torch_radius, 1.0f, 0.62f, 0.3f, 1.0f);
         }
     }
 

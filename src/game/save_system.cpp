@@ -352,10 +352,10 @@ static KfSaveSlotSummary save_summary(const SavedGameState &state) {
         KfSaveSlotState::Ready};
 }
 
-static kf::SaveFileResult save_read_record(KfSaveSlotId slot, SavedGameState &state, u32 &checksum) {
+static kf::SaveFileResult save_read_record(kf::SaveSlot slot, SavedGameState &state, u32 &checksum) {
     u8 data[kf::save_file_capacity];
     std::size_t size;
-    const auto result = kf::save_file_read(save_slot_native(slot), data, sizeof data, &size);
+    const auto result = kf::save_file_read(slot, data, sizeof data, &size);
     if (result != kf::SaveFileResult::Ok)
         return result;
     if (size < save_header_bytes || std::memcmp(data, save_magic, sizeof save_magic) != 0)
@@ -391,7 +391,7 @@ KfSaveResult save_system_read_catalog(KfSaveSlotSummary *summaries) {
         SavedGameState state{};
         u32 checksum = 0;
         const auto slot = static_cast<KfSaveSlotId>(i + 1);
-        const auto result = save_read_record(slot, state, checksum);
+        const auto result = save_read_record(save_slot_native(slot), state, checksum);
         if (result == kf::SaveFileResult::Missing)
             continue;
         if (result != kf::SaveFileResult::Ok) {
@@ -412,7 +412,7 @@ KfSaveResult save_system_read_slot(KfSaveSlotId slot) {
         return save_failure(kf::SaveFileResult::Invalid, false);
     SavedGameState state{};
     u32 checksum = 0;
-    const auto result = save_read_record(slot, state, checksum);
+    const auto result = save_read_record(save_slot_native(slot), state, checksum);
     if (result != kf::SaveFileResult::Ok)
         return save_failure(result, false);
     const auto &catalog = save_catalog[kf_enum_encode<s16>(slot) - 1];
@@ -422,12 +422,11 @@ KfSaveResult save_system_read_slot(KfSaveSlotId slot) {
     }
     // No live game state is touched until the complete file is decoded and validated.
     save_state_apply(state);
+    kf::automap_load(save_slot_native(slot));
     return KF_SAVE_RESULT_OK;
 }
 
-KfSaveResult save_system_write_slot(KfSaveSlotId slot) {
-    if (!save_slot_valid(slot))
-        return save_failure(kf::SaveFileResult::Invalid, true);
+static kf::SaveFileResult save_write_record(kf::SaveSlot slot, u32 &checksum) {
     SavedGameState state{};
     state.player = player_state;
     state.world = map_runtime_state.world_state;
@@ -435,25 +434,61 @@ KfSaveResult save_system_write_slot(KfSaveSlotId slot) {
     for (unsigned i = 0; i < KF_MAGIC_RECORD_COUNT; ++i)
         state.learned[i] = effect_state.magic.entries[i].learned;
     if (!save_state_valid(state))
-        return save_failure(kf::SaveFileResult::Invalid, true);
+        return kf::SaveFileResult::Invalid;
     u8 data[kf::save_file_capacity];
     SaveCodec payload{data, sizeof data, save_header_bytes, SaveCodecMode::Write, true};
     save_state_fields(payload, state);
     if (!payload.valid)
-        return save_failure(kf::SaveFileResult::Invalid, true);
+        return kf::SaveFileResult::Invalid;
     std::memcpy(data, save_magic, sizeof save_magic);
     SaveCodec header{data, save_header_bytes, sizeof save_magic, SaveCodecMode::Write, true};
     u32 version = save_version;
     u32 payload_size = payload.position - save_header_bytes;
-    u32 checksum = save_checksum(data + save_header_bytes, payload_size);
+    checksum = save_checksum(data + save_header_bytes, payload_size);
     save_field<u32>(header, version);
     save_field<u32>(header, payload_size);
     save_field<u32>(header, checksum);
-    const auto result = kf::save_file_write(save_slot_native(slot), data, payload.position);
+    return kf::save_file_write(slot, data, payload.position);
+}
+
+KfSaveResult save_system_write_slot(KfSaveSlotId slot) {
+    if (!save_slot_valid(slot))
+        return save_failure(kf::SaveFileResult::Invalid, true);
+    u32 checksum = 0;
+    const auto result = save_write_record(save_slot_native(slot), checksum);
     if (result != kf::SaveFileResult::Ok)
         return save_failure(result, true);
     save_catalog[kf_enum_encode<s16>(slot) - 1] = {true, checksum};
+    kf::automap_save(save_slot_native(slot));
     return KF_SAVE_RESULT_OK;
+}
+
+// PC extension: quick save/load (F2/F4) through the same record format, in its
+// own file. The caller persists the current floor first and reloads it after.
+bool save_system_quick_write(void) {
+    u32 checksum = 0;
+    const auto result = save_write_record(kf::SaveSlot::Quick, checksum);
+    if (result != kf::SaveFileResult::Ok)
+        std::printf("[quicksave] save failed (%d)\n", static_cast<int>(result));
+    if (result == kf::SaveFileResult::Ok)
+        kf::automap_save(kf::SaveSlot::Quick);
+    return result == kf::SaveFileResult::Ok;
+}
+
+bool save_system_quick_read(void) {
+    SavedGameState state{};
+    u32 checksum = 0;
+    const auto result = save_read_record(kf::SaveSlot::Quick, state, checksum);
+    if (result != kf::SaveFileResult::Ok) {
+        if (result == kf::SaveFileResult::Missing)
+            std::printf("[quicksave] no quick save yet (press F2)\n");
+        else
+            std::printf("[quicksave] load failed (%d)\n", static_cast<int>(result));
+        return false;
+    }
+    save_state_apply(state);
+    kf::automap_load(kf::SaveSlot::Quick);
+    return true;
 }
 
 void menu_play_input_sound(KfMenuSoundCue cue)

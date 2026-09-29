@@ -15,6 +15,12 @@ struct ProjectedPoint {
     s16 x, y;
     s32 depth;
     s32 fog;
+    // PC extension: the same position before truncation to whole pixels, and the
+    // camera-space depth for perspective-correct texturing. Game logic keeps
+    // using x/y/depth; only drawn vertices read these.
+    float fx, fy, w;
+    // Camera-space position, so the host can re-project between game updates.
+    float cx, cy, cz;
 };
 
 VECTOR render_transform_point(const MATRIX &model, const SVECTOR &point);

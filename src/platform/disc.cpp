@@ -6,9 +6,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#ifdef _WIN32
+#include <filesystem>
+#else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 namespace kf {
 static constexpr unsigned cue_line_capacity = 1024;
@@ -80,6 +84,22 @@ bool disc_cue_image(const char *text, char *filename, std::size_t capacity) {
     return file && track && index;
 }
 
+#ifdef _WIN32
+static FILE *open_image(const char *path, std::size_t *size) {
+    std::error_code error;
+    const std::filesystem::path file_path = std::filesystem::path(reinterpret_cast<const char8_t *>(path));
+    if (!std::filesystem::is_regular_file(file_path, error))
+        return nullptr;
+    const auto length = std::filesystem::file_size(file_path, error);
+    if (error || length == 0 || length > disc_import_limit)
+        return nullptr;
+    FILE *file = ::_wfopen(file_path.c_str(), L"rb");
+    if (!file)
+        return nullptr;
+    *size = static_cast<std::size_t>(length);
+    return file;
+}
+#else
 static FILE *open_image(const char *path, std::size_t *size) {
     const int descriptor = ::open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (descriptor < 0)
@@ -98,6 +118,8 @@ static FILE *open_image(const char *path, std::size_t *size) {
     *size = static_cast<std::size_t>(info.st_size);
     return file;
 }
+
+#endif
 
 static bool ends_with_cue(const char *path) {
     const auto size = std::strlen(path);
@@ -131,6 +153,10 @@ static FILE *open_disc(const char *source, std::size_t *size) {
         return nullptr;
     }
     const char *slash = std::strrchr(source, '/');
+#ifdef _WIN32
+    if (const char *backslash = std::strrchr(source, '\\'); backslash && (!slash || backslash > slash))
+        slash = backslash;
+#endif
     const auto prefix = slash ? static_cast<std::size_t>(slash + 1 - source) : 0;
     char path[disc_path_capacity];
     if (prefix + std::strlen(name) >= sizeof path)
@@ -140,6 +166,20 @@ static FILE *open_disc(const char *source, std::size_t *size) {
     return open_image(path, size);
 }
 
+#ifdef _WIN32
+static bool write_asset(const std::filesystem::path &root, const Asset &asset) {
+    std::error_code error;
+    const auto path = root / std::filesystem::path(reinterpret_cast<const char8_t *>(asset.path));
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error || std::filesystem::exists(path, error))
+        return false;
+    FILE *file = ::_wfopen(path.c_str(), L"wb");
+    if (!file)
+        return false;
+    const bool written = std::fwrite(asset.bytes.data, 1, asset.bytes.size, file) == asset.bytes.size;
+    return std::fclose(file) == 0 && written;
+}
+#else
 static bool write_asset(int root, const Asset &asset) {
     char path[sizeof asset.path];
     std::memcpy(path, asset.path, sizeof path);
@@ -177,6 +217,8 @@ static bool write_asset(int root, const Asset &asset) {
     return closed && written == asset.bytes.size;
 }
 
+#endif
+
 bool disc_extract(const char *source, const char *destination) {
     std::size_t size;
     FILE *file = open_disc(source, &size);
@@ -194,7 +236,11 @@ bool disc_extract(const char *source, const char *destination) {
     while (disc_import_waiting(importer)) {
         const auto request = importer->request;
         if (!buffer_resize(&read, request.length) ||
+#ifdef _WIN32
+            ::_fseeki64(file, static_cast<long long>(request.offset), SEEK_SET) != 0 ||
+#else
             ::fseeko(file, static_cast<off_t>(request.offset), SEEK_SET) != 0 ||
+#endif
             std::fread(read.data, 1, read.size, file) != read.size) {
             disc_import_fail(importer, "Cannot read the selected disc image.");
             break;
@@ -207,6 +253,22 @@ bool disc_extract(const char *source, const char *destination) {
         ok = false;
     if (!ok)
         std::fprintf(stderr, "%s\n", importer->message);
+#ifdef _WIN32
+    std::error_code error;
+    const std::filesystem::path root = std::filesystem::path(reinterpret_cast<const char8_t *>(destination));
+    if (ok && !std::filesystem::create_directory(root, error)) {
+        std::fprintf(stderr, "Cannot create %s: %s. Extraction requires a new directory; use --data to reuse one.\n",
+                     destination, error ? error.message().c_str() : "already exists");
+        ok = false;
+    } else if (ok) {
+        for (std::size_t i = 0; ok && i < importer->assets.count; ++i)
+            ok = write_asset(root, importer->assets.entries[i]);
+        if (!ok)
+            std::fprintf(stderr, "Extraction failed; partial files remain in %s. No existing directory was replaced.\n", destination);
+        else
+            std::printf("Extracted %zu verified files to %s\n", importer->assets.count, destination);
+    }
+#else
     if (ok && ::mkdir(destination, S_IRWXU) != 0) {
         std::fprintf(stderr, "Cannot create %s: %s. Extraction requires a new directory; use --data to reuse one.\n",
                      destination, std::strerror(errno));
@@ -223,6 +285,7 @@ bool disc_extract(const char *source, const char *destination) {
         else
             std::printf("Extracted %zu verified files to %s\n", importer->assets.count, destination);
     }
+#endif
     disc_import_release(importer);
     delete importer;
     return ok;

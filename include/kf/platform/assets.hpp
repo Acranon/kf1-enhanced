@@ -81,7 +81,10 @@ struct DiscImporter {
 // Identity metadata only; extracted resources remain ordinary, unchanged files.
 inline constexpr const char *retail_files_sha256 =
     "450b9f09ca34bedc1c8bc150e01b79bfe108c700dad2b2783246b926953deee2";
-bool assets_match_retail(AssetTable *table);
+// Retail: the untouched Japanese disc. Modified: the same file set with changed
+// contents, such as the English translation patch. Foreign: anything else.
+enum class DiscMatch { Retail, Modified, Foreign };
+DiscMatch assets_match_retail(AssetTable *table);
 void disc_import_start(DiscImporter *importer, std::uint64_t disc_size);
 bool disc_import_waiting(const DiscImporter *importer);
 void disc_import_supply(DiscImporter *importer, const u8 *bytes, std::size_t size);

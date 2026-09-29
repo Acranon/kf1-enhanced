@@ -1,0 +1,69 @@
+King's Field Enhanced
+=====================
+
+King's Field (Japan, 1994) for Windows, in English with the fan translation,
+plus optional widescreen, high frame rates, lighting, an automap, quick saves,
+a settings overlay and Lua mods.
+
+Project page, updates and bug reports:
+  https://github.com/Acranon/kf1-enhanced
+
+This is a pre-release. Please attach kf.log (see below) to bug reports.
+
+
+WHAT YOU NEED
+-------------
+A disc image of King's Field (Japan) SLPS-00017 that you dumped yourself, with
+the English translation patch (v1.0, by John Osborne) applied:
+  https://www.romhacking.net/translations/7308/
+Use a .cue + .bin pair (single track) or an .iso. No game files are included.
+
+
+FIRST LAUNCH
+------------
+Run kings-field.exe and choose your disc image when asked. The game copies its
+files into the "data" folder here, once. The image itself is not changed.
+You can also drop the .cue onto kings-field.exe, or put it in this folder first.
+
+To switch to a different image later, delete the "data" folder.
+
+
+CONTROLS
+--------
+  Move / strafe ........ W A S D
+  Look ................. Mouse (click the window first), Page Up / Page Down
+  Turn ................. Left / Right arrows
+  Run .................. Shift
+  Attack ............... Space, left mouse button
+  Magic ................ Q, right mouse button
+  Interact / confirm ... E, Enter
+  Menu ................. Tab (Tab or Backspace backs out)
+  Pause ................ P, Escape
+  Full map ............. M
+  Quick save / load .... F2 / F4 (F4 also works on the title screen)
+  Settings overlay ..... F1
+  Fullscreen ........... F11, Alt+Enter
+
+Every enhancement can be switched off in the F1 settings.
+
+
+FILES
+-----
+Saves, settings, mods and kf.log are in:
+  %APPDATA%\KingsField\SLPS00017
+The example mods in the "mods" folder here are copied there on the first launch,
+switched off. Enable them in F1 > Mods. See MODDING.md for writing your own.
+
+
+CREDITS
+-------
+Built on sushi-shi's King's Field source port (CC0):
+  https://github.com/sushi-shi/kings-field-decomp
+Menus, mods and console inspired by Verdite2 by Voicedrew11 (MIT):
+  https://github.com/Voicedrew11/verdite2
+English translation by John Osborne (HwitVlf).
+Uses Dear ImGui, Lua, cJSON, SDL3 and the Khronos OpenGL ES headers; their
+licenses are in the "licenses" folder.
+
+King's Field is by FromSoftware. This is an unofficial fan project, not
+affiliated with or endorsed by FromSoftware or Sony.

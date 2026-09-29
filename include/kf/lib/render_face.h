@@ -34,8 +34,19 @@ inline kf::FaceMaterial render_texture_material(u16 page, u16 palette)
 
 inline void render_face_vertex(kf::DrawFace *face, unsigned index, const KfScreenVertex *vertex)
 {
-    face->vertices[index].x = vertex->sxy.vector.vx;
-    face->vertices[index].y = vertex->sxy.vector.vy;
+    auto &out = face->vertices[index];
+    if (kf::render_subpixel) {
+        out.x = vertex->fx;
+        out.y = vertex->fy;
+    } else {
+        out.x = vertex->sxy.vector.vx;
+        out.y = vertex->sxy.vector.vy;
+    }
+    out.w = kf::render_perspective ? vertex->w : 0.0f;
+    const bool world = !kf::render_camera_fixed && vertex->cz > 0;
+    out.cx = world ? vertex->cx : 0.0f;
+    out.cy = world ? vertex->cy : 0.0f;
+    out.cz = world ? vertex->cz : 0.0f;
 }
 
 inline void render_face_uv(kf::DrawFace *face, unsigned index, u16 uv)

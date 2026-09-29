@@ -19,6 +19,7 @@
 #include <kf/platform/host.hpp>
 #include <kf/platform/module_state.hpp>
 #include <kf/platform/input.hpp>
+#include <kf/platform/automap.hpp>
 #include <kf/lib/codec.h>
 #include <kf/renderer/renderer.hpp>
 #include <kf/renderer/lighting.hpp>

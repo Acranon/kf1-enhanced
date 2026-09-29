@@ -19,6 +19,8 @@ static std::uint64_t frame_pacer_last_tick;
 
 KfOverlayResultWord game_next_overlay_mode;
 
+void automap_publish(void);
+
 void game_main_loop(void)
 {
     memset((void *)&game_graphics_runtime, 0, sizeof game_graphics_runtime);
@@ -55,6 +57,7 @@ void game_main_loop(void)
         effect_pool_sweep();
         map_event_pool_update();
         render_frame(&player_position_snapshot, &player_rotation_snapshot);
+        automap_publish();
         player_state.allow_near_actor_spawn = KF_ACTOR_NEAR_SPAWN_FORBIDDEN;
         if (player_current_map_attribute()
             == KF_MAP_ATTRIBUTE_WARP) {

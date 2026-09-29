@@ -321,6 +321,9 @@ static void player_update_movement_input(u32 input)
         player_turn_step_limit = PLAYER_SLOWED_TURN_LIMIT;
     } else {
         player_movement_velocity_limit = PLAYER_NORMAL_MOVEMENT_LIMIT;
+        if (kf::host_run_held()) {
+            player_movement_velocity_limit = PLAYER_NORMAL_MOVEMENT_LIMIT * kf::player_run_speed / 100;
+        }
         player_turn_step_limit = PLAYER_NORMAL_TURN_LIMIT;
     }
     if (input & kf::Button::Up) {
@@ -466,13 +469,13 @@ static void player_update_view_input(u32 input)
     }
     if (motion.pitch_step > 0) {
         player_state.camera_rotation.vx += motion.pitch_step;
-        if (player_state.camera_rotation.vx >= KF_PLAYER_CAMERA_PITCH_LIMIT + 1) {
-            player_state.camera_rotation.vx = KF_PLAYER_CAMERA_PITCH_LIMIT;
+        if (player_state.camera_rotation.vx >= kf::player_pitch_limit + 1) {
+            player_state.camera_rotation.vx = kf::player_pitch_limit;
         }
     } else if (motion.pitch_step < 0) {
         player_state.camera_rotation.vx += motion.pitch_step;
-        if (player_state.camera_rotation.vx < -KF_PLAYER_CAMERA_PITCH_LIMIT) {
-            player_state.camera_rotation.vx = -KF_PLAYER_CAMERA_PITCH_LIMIT;
+        if (player_state.camera_rotation.vx < -kf::player_pitch_limit) {
+            player_state.camera_rotation.vx = -kf::player_pitch_limit;
         }
     }
 }
@@ -654,6 +657,42 @@ static void player_restore_loaded_game()
     player_select_magic(player_state.selected_magic_id);
 }
 
+// PC extension: F2 quick save / F4 quick load through the game's own save
+// record, applied between updates the way the menu's Load returns.
+static void player_quick_save()
+{
+    if (player_state.update_state != KF_PLAYER_UPDATE_NORMAL) {
+        kf::host_show_message("Cannot quick save right now");
+        return;
+    }
+    map_world_state_persist();
+    kf::host_show_message(save_system_quick_write() ? "Quick saved" : "Quick save failed");
+}
+
+static void player_quick_load()
+{
+    auto &motion = player_state.motion_state;
+
+    if (player_state.update_state == KF_PLAYER_UPDATE_RECOVERY_FADE) {
+        return;
+    }
+    const bool dying = player_state.update_state == KF_PLAYER_UPDATE_DYING;
+    collision_adjust_cell_occupancy(motion.map_cell.x, motion.map_cell.z, -1);
+    if (!save_system_quick_read()) {
+        collision_adjust_cell_occupancy(motion.map_cell.x, motion.map_cell.z, 1);
+        kf::host_show_message("No quick save to load (F2 saves)");
+        return;
+    }
+    if (dying) {
+        // Undo the death fade's colour, fog and HUD dimming.
+        player_death_apply_visual_fade(&player_death_saved_color_matrix, 0);
+    }
+    player_restore_loaded_game();
+    player_clear_motion();
+    collision_adjust_cell_occupancy(motion.map_cell.x, motion.map_cell.z, 1);
+    kf::host_show_message("Quick loaded");
+}
+
 void player_update(void)
 {
     auto &motion = player_state.motion_state;
@@ -662,6 +701,16 @@ void player_update(void)
 
     input = kf::host_read_buttons();
     const auto look = kf::host_take_look();
+    switch (kf::host_take_quick_request()) {
+    case kf::QuickRequest::Save:
+        player_quick_save();
+        break;
+    case kf::QuickRequest::Load:
+        player_quick_load();
+        break;
+    case kf::QuickRequest::None:
+        break;
+    }
     if (player_state.update_state == KF_PLAYER_UPDATE_DYING) {
         player_death_update();
         return;
@@ -675,7 +724,7 @@ void player_update(void)
         (player_state.camera_rotation.vy + look.yaw) & KF_ANGLE_WRAP_MASK;
     player_state.camera_rotation.vx = std::clamp<s32>(
         player_state.camera_rotation.vx + look.pitch,
-        -KF_PLAYER_CAMERA_PITCH_LIMIT, KF_PLAYER_CAMERA_PITCH_LIMIT);
+        -kf::player_pitch_limit, kf::player_pitch_limit);
     if (input & kf::Button::Select) {
         display_show_system_screen(KF_SYSTEM_SCREEN_PAUSE);
     }

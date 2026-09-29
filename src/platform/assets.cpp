@@ -254,9 +254,9 @@ static u32 le32(const u8 *p) {
 static u32 be32(const u8 *p) {
     return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
 }
-bool assets_match_retail(AssetTable *table) {
+DiscMatch assets_match_retail(AssetTable *table) {
     if (table->count != retail_resource_file_count)
-        return false;
+        return DiscMatch::Foreign;
     std::sort(table->entries, table->entries + table->count,
               [](const Asset &a, const Asset &b) { return std::strcmp(a.path, b.path) < 0; });
     Sha256 hash{};
@@ -266,7 +266,7 @@ bool assets_match_retail(AssetTable *table) {
         const auto &asset = table->entries[i];
         const auto path_size = std::strlen(asset.path);
         if (asset.bytes.size > disc_import_limit - total)
-            return false;
+            return DiscMatch::Foreign;
         total += asset.bytes.size;
         u8 sizes[8];
         for (unsigned byte = 0; byte < 4; ++byte) {
@@ -279,7 +279,11 @@ bool assets_match_retail(AssetTable *table) {
     }
     char digest[sha256_hex_capacity];
     sha256_finish(&hash, digest);
-    return std::strcmp(digest, retail_files_sha256) == 0;
+    if (std::strcmp(digest, retail_files_sha256) == 0)
+        return DiscMatch::Retail;
+    std::printf("Disc files differ from the untouched Japanese release (translation patch?); using them as they are.\n"
+                "Files digest: %s\n", digest);
+    return DiscMatch::Modified;
 }
 static void read_extent(DiscImporter *importer, const DiscExtent *file) {
     const auto sectors = (std::uint64_t(file->length) + iso_payload_bytes - 1) / iso_payload_bytes;
@@ -297,8 +301,9 @@ static void read_extent(DiscImporter *importer, const DiscExtent *file) {
 }
 static void next_file(DiscImporter *importer) {
     if (importer->file_index == importer->file_count) {
-        if (!assets_match_retail(&importer->assets)) {
-            disc_import_fail(importer, "Extracted files do not match Japanese SLPS-00017.");
+        // Patched discs (the English translation) keep the retail file set.
+        if (assets_match_retail(&importer->assets) == DiscMatch::Foreign) {
+            disc_import_fail(importer, "This disc image is not King's Field (Japan, SLPS-00017).");
             return;
         }
         importer->state = ImportState::complete;

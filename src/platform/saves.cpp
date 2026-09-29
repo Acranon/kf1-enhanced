@@ -80,6 +80,9 @@ EM_ASYNC_JS(int, browser_save_write, (int slot, const u8 *input, unsigned size),
         return error && error.name === 'QuotaExceededError' ? Result.NoSpace : Result.IoError;
     }
 });
+#elif defined(_WIN32)
+#include <filesystem>
+#include <windows.h>
 #else
 #include <cerrno>
 #include <fcntl.h>
@@ -88,7 +91,20 @@ EM_ASYNC_JS(int, browser_save_write, (int slot, const u8 *input, unsigned size),
 #endif
 
 namespace kf {
-#ifndef __EMSCRIPTEN__
+#if defined(_WIN32)
+static constexpr unsigned save_name_capacity = 16;
+static constexpr unsigned pending_name_capacity = 64;
+static std::filesystem::path *save_directory;
+static unsigned pending_serial;
+static std::filesystem::path save_path(SaveSlot slot) {
+    char name[save_name_capacity];
+    if (slot == SaveSlot::Quick)
+        std::snprintf(name, sizeof name, "quicksave.kfs");
+    else
+        std::snprintf(name, sizeof name, "slot%u.kfs", static_cast<unsigned>(slot));
+    return *save_directory / name;
+}
+#elif !defined(__EMSCRIPTEN__)
 static constexpr unsigned save_name_capacity = 16;
 static constexpr unsigned pending_name_capacity = 64;
 static constexpr unsigned pending_name_attempts = 8;
@@ -127,7 +143,7 @@ static bool sync_directory_path(int directory) {
 #endif
 
 static bool valid_slot(SaveSlot slot) {
-    return slot >= SaveSlot::First && slot <= SaveSlot::Third;
+    return slot >= SaveSlot::First && slot <= SaveSlot::Quick;
 }
 
 bool save_storage_start(const char *directory) {
@@ -135,6 +151,16 @@ bool save_storage_start(const char *directory) {
     // Browser slots are file byte streams in a dedicated IndexedDB transaction.
     // Resource extraction/cache uses a separate store and cannot delay their commit.
     return !directory && browser_saves_open() != 0;
+#elif defined(_WIN32)
+    char *default_path = directory ? nullptr : SDL_GetPrefPath("KingsField", "SLPS00017");
+    const char *path = directory ? directory : default_path;
+    std::error_code error;
+    if (path && std::filesystem::is_directory(std::filesystem::path(reinterpret_cast<const char8_t *>(path)), error))
+        save_directory = new std::filesystem::path(std::filesystem::path(reinterpret_cast<const char8_t *>(path)));
+    SDL_free(default_path);
+    if (!save_directory)
+        std::fprintf(stderr, "Cannot open save directory: %s\n", directory ? directory : "default user storage");
+    return save_directory != nullptr;
 #else
     char *default_path = directory ? nullptr : SDL_GetPrefPath("KingsField", "SLPS00017");
     const char *path = directory ? directory : default_path;
@@ -156,6 +182,9 @@ bool save_storage_start(const char *directory) {
 void save_storage_shutdown() {
 #ifdef __EMSCRIPTEN__
     browser_saves_close();
+#elif defined(_WIN32)
+    delete save_directory;
+    save_directory = nullptr;
 #else
     if (save_directory >= 0)
         ::close(save_directory);
@@ -173,6 +202,29 @@ SaveFileResult save_file_read(SaveSlot slot, u8 *data, std::size_t capacity, std
     const auto result = static_cast<SaveFileResult>(browser_save_read(static_cast<int>(slot), data, capacity, &loaded));
     *size = loaded;
     return result;
+#elif defined(_WIN32)
+    if (!save_directory)
+        return SaveFileResult::Unavailable;
+    const auto path = save_path(slot);
+    std::error_code error;
+    if (!std::filesystem::exists(path, error))
+        return error ? SaveFileResult::IoError : SaveFileResult::Missing;
+    if (!std::filesystem::is_regular_file(path, error))
+        return SaveFileResult::Invalid;
+    const auto length = std::filesystem::file_size(path, error);
+    if (error)
+        return SaveFileResult::IoError;
+    if (length == 0 || length > capacity)
+        return SaveFileResult::Invalid;
+    FILE *file = ::_wfopen(path.c_str(), L"rb");
+    if (!file)
+        return SaveFileResult::IoError;
+    const auto loaded = std::fread(data, 1, static_cast<std::size_t>(length), file);
+    const bool at_end = std::fgetc(file) == EOF && !std::ferror(file);
+    if (std::fclose(file) != 0 || loaded != length || !at_end)
+        return SaveFileResult::IoError;
+    *size = loaded;
+    return SaveFileResult::Ok;
 #else
     if (save_directory < 0)
         return SaveFileResult::Unavailable;
@@ -215,6 +267,35 @@ SaveFileResult save_file_write(SaveSlot slot, const u8 *data, std::size_t size) 
         return SaveFileResult::Invalid;
 #ifdef __EMSCRIPTEN__
     return static_cast<SaveFileResult>(browser_save_write(static_cast<int>(slot), data, size));
+#elif defined(_WIN32)
+    if (!save_directory)
+        return SaveFileResult::Unavailable;
+    const auto path = save_path(slot);
+    char pending_name[pending_name_capacity];
+    std::snprintf(pending_name, sizeof pending_name, ".slot%u.%llx.%u.tmp", static_cast<unsigned>(slot),
+        static_cast<unsigned long long>(SDL_GetTicksNS()), ++pending_serial);
+    const auto pending = *save_directory / pending_name;
+    if (slot == SaveSlot::Quick) {
+        // Keep the previous quick save, so one mistimed F2 is recoverable.
+        auto backup = path;
+        backup += ".bak";
+        ::CopyFileW(path.c_str(), backup.c_str(), FALSE);
+    }
+    FILE *file = ::_wfopen(pending.c_str(), L"wbx");
+    if (!file)
+        return SaveFileResult::IoError;
+    bool ok = std::fwrite(data, 1, size, file) == size && std::fflush(file) == 0;
+    ok = std::fclose(file) == 0 && ok;
+    // Atomic replacement with write-through: the Windows analogue of fsync + renameat.
+    if (ok && !::MoveFileExW(pending.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        ok = false;
+    if (!ok) {
+        const bool full = ::GetLastError() == ERROR_DISK_FULL;
+        std::error_code error;
+        std::filesystem::remove(pending, error);
+        return full ? SaveFileResult::NoSpace : SaveFileResult::IoError;
+    }
+    return SaveFileResult::Ok;
 #else
     if (save_directory < 0)
         return SaveFileResult::Unavailable;
@@ -254,6 +335,51 @@ SaveFileResult save_file_write(SaveSlot slot, const u8 *data, std::size_t size) 
     }
     // The rename is atomic; synchronizing its directory makes it durable too.
     return sync_file(save_directory) ? SaveFileResult::Ok : io_error();
+#endif
+}
+#if defined(_WIN32)
+static std::filesystem::path side_path(SaveSlot slot, const char *suffix) {
+    auto path = save_path(slot);
+    path += suffix;
+    return path;
+}
+#endif
+
+SaveFileResult save_side_read(SaveSlot slot, const char *suffix, u8 *data, std::size_t capacity, std::size_t *size) {
+    *size = 0;
+#if defined(_WIN32)
+    if (!save_directory || !valid_slot(slot))
+        return SaveFileResult::Unavailable;
+    FILE *file = ::_wfopen(side_path(slot, suffix).c_str(), L"rb");
+    if (!file)
+        return SaveFileResult::Missing;
+    *size = std::fread(data, 1, capacity, file);
+    std::fclose(file);
+    return SaveFileResult::Ok;
+#else
+    (void)slot; (void)suffix; (void)data; (void)capacity;
+    return SaveFileResult::Unavailable;
+#endif
+}
+
+SaveFileResult save_side_write(SaveSlot slot, const char *suffix, const u8 *data, std::size_t size) {
+#if defined(_WIN32)
+    if (!save_directory || !valid_slot(slot))
+        return SaveFileResult::Unavailable;
+    const auto path = side_path(slot, suffix);
+    auto pending = path;
+    pending += ".tmp";
+    FILE *file = ::_wfopen(pending.c_str(), L"wb");
+    if (!file)
+        return SaveFileResult::IoError;
+    bool ok = std::fwrite(data, 1, size, file) == size;
+    ok = std::fclose(file) == 0 && ok;
+    if (ok && !::MoveFileExW(pending.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
+        ok = false;
+    return ok ? SaveFileResult::Ok : SaveFileResult::IoError;
+#else
+    (void)slot; (void)suffix; (void)data; (void)size;
+    return SaveFileResult::Unavailable;
 #endif
 }
 }

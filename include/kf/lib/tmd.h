@@ -295,6 +295,10 @@ typedef struct KfScreenVertex {
     KfScreenXY sxy;
     s16 sz;
     s16 p2;
+    // PC extension (see kf::ProjectedPoint): sub-pixel position and camera depth.
+    // w = 0 marks orthographic vertices, which are drawn without perspective.
+    float fx, fy, w;
+    float cx, cy, cz;   // camera space (frame smoothing); cz = 0: not re-projectable
 } KfScreenVertex;
 
 struct KfTmdContext {

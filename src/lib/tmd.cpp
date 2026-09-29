@@ -228,6 +228,12 @@ void tmd_project_vertices_shift(KfTmdContext context, s32 count, u8 shift, const
         projected->sxy.vector = {point.x, point.y};
         projected->p2 = point.fog << KF_TMD_DEFAULT_PERSPECTIVE_SHIFT;
         projected->sz = point.depth >> shift;
+        projected->fx = point.fx;
+        projected->fy = point.fy;
+        projected->w = point.w;
+        projected->cx = point.cx;
+        projected->cy = point.cy;
+        projected->cz = point.cz;
         projected++;
         vertex++;
     }
@@ -250,6 +256,10 @@ void tmd_transform_vertices(KfTmdContext context, s32 count, const MATRIX *model
         projected->sxy.vector.vy = transformed.vy;
         projected->p2 = transformed.vz;
         projected->sz = transformed.vz;
+        projected->fx = projected->sxy.vector.vx;
+        projected->fy = projected->sxy.vector.vy;
+        projected->w = 0;
+        projected->cx = projected->cy = projected->cz = 0;
         projected++;
         vertex++;
     }

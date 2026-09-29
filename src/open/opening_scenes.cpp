@@ -15,6 +15,10 @@ enum {
     ENDING_SCROLL_BLEND_LAST = 0xfff,
     ENDING_SCROLL_BLEND_STEP = 0x40,
     SCENE0_UPDATES_PER_SECOND = 22,
+    // Scene 3 (story panels over the flythrough) has the same per-update camera
+    // and 1-pixel text steps as scene 0; presenting once per 60 Hz tick ran it
+    // three times too fast. Reuse scene 0's retail-calibrated cadence.
+    SCENE3_UPDATES_PER_SECOND = SCENE0_UPDATES_PER_SECOND,
     SCENE0_ROTATION_START_POINT = 8,
     SCENE0_FADE_OUT_START_POINT = 15,
     SCENE0_YAW_STEP = 40,
@@ -395,6 +399,7 @@ void opening_scene3_run(void)
     entity_14->rotation.y = 0;
     entity_13->rotation.y = 0;
     opening_camera_path_begin(opening_scene3_camera_path);
+    auto pacer = kf::host_begin_update_pacer(SCENE3_UPDATES_PER_SECOND);
 
     blend = 0;
     for (;;) {
@@ -405,6 +410,7 @@ void opening_scene3_run(void)
             &opening_camera_path_state.position,
             &opening_camera_path_state.rotation);
         opening_poll_input();
+        kf::host_wait_update(pacer);
         blend += OPENING_COLOR_FADE_STEP;
         if (blend >= KF_FIXED12_ONE + 1) {
             break;
@@ -421,6 +427,7 @@ void opening_scene3_run(void)
             &opening_camera_path_state.position,
             &opening_camera_path_state.rotation);
         opening_poll_input();
+        kf::host_wait_update(pacer);
         if (opening_input_action != KF_OPENING_INPUT_NONE) {
             break;
         }
@@ -455,6 +462,7 @@ void opening_scene3_run(void)
         } while (overlay_index < KF_OPENING_SCENE3_OVERLAY_COUNT);
         display_present_frame(open_graphics_runtime.display_state);
         opening_poll_input();
+        kf::host_wait_update(pacer);
     } while (opening_input_action == KF_OPENING_INPUT_NONE);
 
     transition_position = {

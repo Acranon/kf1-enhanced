@@ -544,6 +544,12 @@ void sound_set_paused(bool paused) {
         host_fail("Cannot pause or resume audio playback");
 }
 
+// Port extension: player volume, applied after the game's own mix.
+void sound_set_output_gain(float gain) {
+    if (sound.stream)
+        SDL_SetAudioStreamGain(sound.stream, gain);
+}
+
 void sound_reset(ReverbPreset preset, s16 depth_left, s16 depth_right) {
     sound_poll();
     clear();

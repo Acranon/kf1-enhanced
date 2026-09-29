@@ -638,6 +638,16 @@ enum {
     STATS_HEADER_ROW_STEP = 23
 };
 
+// Copies codes[1..] through the terminator; codes[0] keeps the preceding row's value.
+static void menu_copy_row_tail(MenuGlyphString &string, const s16 *sequence)
+{
+    for (s32 i = 1; i < MENU_GLYPHS_PER_ROW; i++) {
+        string.glyphs.codes[i] = sequence[i];
+        if (sequence[i] == MENU_TEXT_END)
+            break;
+    }
+}
+
 static void menu_draw_vital_fraction(MenuGlyphString &string, s32 current, s32 maximum, s32 digits)
 {
     menu_format_number(current, digits, KF_FORMAT_PAD_SPACES, string.glyphs.codes);
@@ -826,9 +836,9 @@ void menu_draw_status_details(void)
     gs.glyphs.codes[3] = MENU_TEXT_END;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
-    gs.glyphs.codes[0] = menu_glyphs::level[0];
-    gs.glyphs.codes[1] = menu_glyphs::level[1];
-    gs.glyphs.codes[2] = menu_glyphs::level[2];
+    gs.glyphs.codes[0] = menu_glyphs::level_summary[0];
+    gs.glyphs.codes[1] = menu_glyphs::level_summary[1];
+    gs.glyphs.codes[2] = menu_glyphs::level_summary[2];
     gs.glyphs.codes[3] = MENU_TEXT_END;
     gs.position.y += STATUS_SUMMARY_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
@@ -856,10 +866,10 @@ void menu_draw_status_details(void)
     gs.position.y += STATUS_SUMMARY_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
-    gs.glyphs.codes[0] = menu_glyphs::gold[0];
-    gs.glyphs.codes[1] = menu_glyphs::gold[1];
-    gs.glyphs.codes[2] = menu_glyphs::gold[2];
-    gs.glyphs.codes[3] = menu_glyphs::gold[3];
+    gs.glyphs.codes[0] = menu_glyphs::gold_summary[0];
+    gs.glyphs.codes[1] = menu_glyphs::gold_summary[1];
+    gs.glyphs.codes[2] = menu_glyphs::gold_summary[2];
+    gs.glyphs.codes[3] = menu_glyphs::gold_summary[3];
     gs.glyphs.codes[4] = MENU_TEXT_END;
     gs.position.y += STATUS_SUMMARY_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
@@ -1020,11 +1030,7 @@ void menu_draw_status_details(void)
     gs.position.y += STATUS_COMPONENT_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
-    gs.glyphs.codes[1] = menu_glyphs::holy[1];
-    gs.glyphs.codes[2] = menu_glyphs::holy[2];
-    gs.glyphs.codes[3] = menu_glyphs::holy[3];
-    gs.glyphs.codes[4] = menu_glyphs::holy[4];
-    gs.glyphs.codes[5] = MENU_TEXT_END;
+    menu_copy_row_tail(gs, menu_glyphs::holy);
     gs.position.y += STATUS_COMPONENT_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
@@ -1056,16 +1062,11 @@ void menu_draw_status_details(void)
     gs.position.y += STATUS_COMPONENT_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
-    gs.glyphs.codes[1] = menu_glyphs::poison_resistance[1];
-    gs.glyphs.codes[2] = MENU_TEXT_END;
+    menu_copy_row_tail(gs, menu_glyphs::poison_resistance);
     gs.position.y += STATUS_COMPONENT_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
-    gs.glyphs.codes[1] = menu_glyphs::magic_defense[1];
-    gs.glyphs.codes[2] = menu_glyphs::magic_defense[2];
-    gs.glyphs.codes[3] = menu_glyphs::magic_defense[3];
-    gs.glyphs.codes[4] = menu_glyphs::magic_defense[4];
-    gs.glyphs.codes[5] = MENU_TEXT_END;
+    menu_copy_row_tail(gs, menu_glyphs::magic_defense);
     gs.position.y += STATUS_COMPONENT_ROW_STEP;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
@@ -1291,10 +1292,10 @@ void menu_draw_item_detail(KfObjectId item_id, KfItemStockBank shop_bank, KfTrad
     menu_draw_number(&menu_assets.number_atlas, &gs);
 
     gs.position.x = MENU_ITEM_DETAIL_LABEL_X;
-    gs.glyphs.codes[0] = menu_glyphs::gold[0];
-    gs.glyphs.codes[1] = menu_glyphs::gold[1];
-    gs.glyphs.codes[2] = menu_glyphs::gold[2];
-    gs.glyphs.codes[3] = menu_glyphs::gold[3];
+    gs.glyphs.codes[0] = menu_glyphs::gold_price[0];
+    gs.glyphs.codes[1] = menu_glyphs::gold_price[1];
+    gs.glyphs.codes[2] = menu_glyphs::gold_price[2];
+    gs.glyphs.codes[3] = menu_glyphs::gold_price[3];
     gs.glyphs.codes[4] = MENU_TEXT_END;
     menu_draw_string(&menu_assets.glyph_atlas, &gs);
 
@@ -1574,14 +1575,14 @@ KfMenuResult menu_two_option_prompt(
 
     label_a.position.x = MENU_CONFIRM_TEXT_X;
     label_a.position.y = count * MENU_CONFIRM_ROW_STEP + MENU_PROMPT_ACCEPT_Y_OFFSET;
-    label_a.glyphs.codes[0] = menu_glyphs::yes[0];
-    label_a.glyphs.codes[1] = menu_glyphs::yes[1];
+    label_a.glyphs.codes[0] = menu_glyphs::save_yes[0];
+    label_a.glyphs.codes[1] = menu_glyphs::save_yes[1];
     label_a.glyphs.codes[2] = MENU_TEXT_END;
     label_b.position.x = MENU_CONFIRM_TEXT_X;
     label_b.position.y = count * MENU_CONFIRM_ROW_STEP + MENU_PROMPT_DECLINE_Y_OFFSET;
-    label_b.glyphs.codes[0] = menu_glyphs::no[0];
-    label_b.glyphs.codes[1] = menu_glyphs::no[1];
-    label_b.glyphs.codes[2] = menu_glyphs::no[2];
+    label_b.glyphs.codes[0] = menu_glyphs::save_no[0];
+    label_b.glyphs.codes[1] = menu_glyphs::save_no[1];
+    label_b.glyphs.codes[2] = menu_glyphs::save_no[2];
     label_b.glyphs.codes[3] = MENU_TEXT_END;
 
     for (;;) {

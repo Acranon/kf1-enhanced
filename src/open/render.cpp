@@ -20,6 +20,12 @@ void tmd_project_vertices(s32 count, const MATRIX *model, const kf::Projection &
         out->sxy.vector = {point.x, point.y};
         out->p2 = point.fog << open_graphics_runtime.tmd_projection_shift;
         out->sz = point.depth;
+        out->fx = point.fx;
+        out->fy = point.fy;
+        out->w = point.w;
+        out->cx = point.cx;
+        out->cy = point.cy;
+        out->cz = point.cz;
         out++;
         vertex++;
     }
@@ -39,6 +45,12 @@ void tmd_project_vertices_perspective_right(s32 count, const MATRIX *model, cons
         out->sxy.vector = {point.x, point.y};
         out->p2 = point.fog >> open_graphics_runtime.tmd_projection_shift;
         out->sz = point.depth;
+        out->fx = point.fx;
+        out->fy = point.fy;
+        out->w = point.w;
+        out->cx = point.cx;
+        out->cy = point.cy;
+        out->cz = point.cz;
         out++;
         vertex++;
     }

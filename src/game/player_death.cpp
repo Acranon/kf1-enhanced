@@ -65,6 +65,7 @@ void game_state_initialize(void)
     u8 *cursor;
     s32 count;
 
+    kf::automap_reset();
     player_state.experience = 0;
     player_state.progress_state.level = 1;
     player_state.progress_state.current_floor = KF_FLOOR_1;

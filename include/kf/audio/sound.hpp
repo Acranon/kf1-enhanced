@@ -13,6 +13,7 @@ bool sound_start();
 void sound_shutdown();
 void sound_poll();
 void sound_set_paused(bool paused);
+void sound_set_output_gain(float gain);
 void sound_reset(ReverbPreset preset, s16 depth_left, s16 depth_right);
 void sound_master_volume(s16 left, s16 right);
 SoundBank *sound_bank_load(const u8 *header, std::size_t header_size,

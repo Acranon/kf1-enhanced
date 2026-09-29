@@ -1,11 +1,13 @@
 #pragma once
 #include <kf/lib/types.h>
+#include <kf/lib/geometry_types.h>
 #include <cstddef>
 namespace kf {
 struct Renderer;
 struct FaceList;
 struct DrawFace;
 struct FrameStyle;
+struct Projection;
 enum class AppMode : u8 { Opening, Gameplay, Ending };
 struct UpdatePacer {
     std::uint64_t deadline_ns;
@@ -18,10 +20,19 @@ void host_poll();
 std::uint64_t host_clock_ns();
 std::uint64_t host_clock_tick();
 void host_wait_until_tick(std::uint64_t deadline);
+// PC extension: the camera of the world frame being built (frame smoothing).
+void host_frame_camera(const VECTOR &position, const SVECTOR &rotation, const Projection &projection);
+// PC extension: a point light for the frame being built, in camera space.
+// flicker: 0 steady .. 1 strong; seed varies the flicker phase per light.
+void host_add_light(float x, float y, float z, float radius, float r, float g, float b, float flicker, u32 seed);
+// PC extension: map cells that block dynamic light (non-zero = solid), row-major.
+void host_light_occluders(const u8 *solid, int columns, int rows, float tile_size);
 void host_wait_frame();
 UpdatePacer host_begin_update_pacer(u32 steps_per_second);
 void host_wait_update(UpdatePacer &pacer);
 Renderer *host_renderer();
+// A short message shown over the picture for a couple of seconds (PC overlay).
+void host_show_message(const char *text);
 void host_present_faces(const FaceList *faces);
 void host_begin_frame();
 void host_enqueue_face(const DrawFace &face);

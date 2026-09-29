@@ -26,4 +26,19 @@ void host_wait_buttons_released(u32 mask = ~u32(0));
 void host_wait_button_press();
 InputContext host_set_input_context(InputContext context);
 LookDelta host_take_look();
+// Run is a port addition with no PlayStation button, so it stays out of the button mask.
+bool host_run_held();
+// Quick save/load presses made during gameplay since the last call.
+enum class QuickRequest : u8 { None, Save, Load };
+QuickRequest host_take_quick_request();
+// Intro and title: true when F4 was pressed and a quick save exists. The request
+// is kept, so the game loads it on its first update after the opening skips out.
+bool host_opening_quick_load();
+
+// Port options (settings.json). Run speed is a percentage of the walking speed.
+inline int player_run_speed = 160;
+// Run key mode: false holds to run, true toggles running on each press.
+inline bool player_run_toggle = false;
+// Camera pitch limit in 1/4096 turns; the original is 191 (about 17 degrees).
+inline s32 player_pitch_limit = 191;
 }

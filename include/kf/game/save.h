@@ -31,4 +31,6 @@ struct KfSaveSlotSummary {
 KfSaveResult save_system_read_catalog(KfSaveSlotSummary *summaries);
 KfSaveResult save_system_read_slot(KfSaveSlotId slot);
 KfSaveResult save_system_write_slot(KfSaveSlotId slot);
+bool save_system_quick_write(void);
+bool save_system_quick_read(void);
 #endif

@@ -112,6 +112,7 @@ typedef struct KfTmdState {
 extern MATRIX color_matrix_table[KF_GAME_COLOR_PRESET_COUNT];
 extern KfCellWindow render_cell_windows[KF_CELL_WINDOW_YAW_COUNT];
 extern KfSpriteQuad floor_item_sprites[KF_FLOOR_ITEM_SPRITE_COUNT];
+void render_publish_light(s32 x, s32 y, s32 z, float radius, float r, float g, float b, float flicker);
 extern KfSpriteQuad effect_billboard_sprites[KF_EFFECT_BILLBOARD_SPRITE_COUNT];
 extern KfEffectSprite effect_sprites[KF_EFFECT_SPRITE_TABLE_ROWS];
 extern KfHudSprite hud_sprites[KF_HUD_TABLE_ROWS];

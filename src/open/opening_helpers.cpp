@@ -8,6 +8,11 @@ void opening_poll_input(void)
 {
     u32 input = kf::host_read_buttons();
 
+    // PC extension: F4 skips straight into the game, which then quick loads.
+    if (kf::host_opening_quick_load()) {
+        opening_input_action = KF_OPENING_INPUT_SKIP;
+        return;
+    }
     if (input != 0) {
         if ((input & kf::Button::Start) != 0) {
             opening_input_action = KF_OPENING_INPUT_SKIP;

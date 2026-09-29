@@ -616,10 +616,16 @@ void render_enqueue_sprite(KfSpriteQuad *sprite, s16 depth_bias, KfSpriteDepthCu
     kf::DrawFace face {};
     CVECTOR color {};
     face.shape = kf::FaceShape::Quad;
+    face.casts_shadow = false;
     face.material = game_graphics_runtime.active_render_material;
     for (unsigned i = 0; i < 4; ++i) {
-        face.vertices[i].x = positions[i].x;
-        face.vertices[i].y = positions[i].y;
+        face.vertices[i].x = kf::render_subpixel ? positions[i].fx : positions[i].x;
+        face.vertices[i].y = kf::render_subpixel ? positions[i].fy : positions[i].y;
+        face.vertices[i].w = kf::render_perspective ? positions[i].w : 0.0f;
+        const bool world = !kf::render_camera_fixed && positions[i].cz > 0;
+        face.vertices[i].cx = world ? positions[i].cx : 0.0f;
+        face.vertices[i].cy = world ? positions[i].cy : 0.0f;
+        face.vertices[i].cz = world ? positions[i].cz : 0.0f;
     }
     render_face_uv_rectangle(&face, sprite->u, sprite->v,
         sprite->u + sprite->u_span, sprite->v + sprite->v_span);

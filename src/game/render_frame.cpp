@@ -8,6 +8,7 @@
 #include <kf/game/state.h>
 #include <kf/game/pool.h>
 #include <kf/game/system.h>
+#include <kf/lib/map_data.h>
 
 enum {
     HUD_GAUGE_WIDTH = 50,
@@ -37,6 +38,15 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
 
     render_set_view_transform(game_graphics_runtime.render_state, position_or_null, rotation_or_null);
     display_begin_frame(game_graphics_runtime.display_state);
+    kf::host_frame_camera(game_graphics_runtime.render_state.view_position,
+        game_graphics_runtime.render_state.view_rotation, game_graphics_runtime.render_state.projection);
+    if (kf::render_dynamic_lights && kf::render_light_occlusion) {
+        // Dynamic lighting: solid rock cells stop light (diagonal half-cells count as open).
+        static u8 solid[KF_MAP_ROWS * KF_MAP_COLUMNS];
+        for (int i = 0; i < KF_MAP_ROWS * KF_MAP_COLUMNS; ++i)
+            solid[i] = map_collision_grid.linear[i] == KF_MAP_CELL_BLOCKED ? 1 : 0;
+        kf::host_light_occluders(solid, KF_MAP_COLUMNS, KF_MAP_ROWS, static_cast<float>(KF_MAP_TILE_SIZE));
+    }
     pool_mark_allocated();
     render_map_cells();
     status_sprite = &hud_sprites[KF_HUD_POISON_ICON];
@@ -107,6 +117,7 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
     kf::matrix_set_rotation_xyz(spin, model);
 
     game_graphics_runtime.active_render_material = game_graphics_runtime.notification_text_material;
+    kf::render_camera_fixed = true;   // notifications float in front of the camera
     record = notification_sprites;
     if (record[KF_NOTIFICATION_TEXT_SPRITE].active == KF_SPRITE_VISIBLE) {
         render_enqueue_sprite(&record[KF_NOTIFICATION_TEXT_SPRITE].sprite, 0, KF_SPRITE_DEPTH_CUE_NORMAL, &render_light_matrices[KF_RENDER_LIGHT_NOTIFICATION], &model, game_graphics_runtime.render_state.projection);
@@ -122,9 +133,12 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
         }
         record++;
     }
+    kf::render_camera_fixed = false;
 
     render_entities();
+    kf::render_camera_fixed = true;   // the held weapon moves with the camera
     render_weapon();
+    kf::render_camera_fixed = false;
     display_present_frame(game_graphics_runtime.display_state);
     pool_release_stale();
     // World rendering also advances floor sprites and notifications. Pace every

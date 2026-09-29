@@ -9,3 +9,25 @@ __pycache__/
 *.bin
 *.cue
 *.iso
+
+# Game data and disc images (never commit these)
+/data/
+*.img
+*.ccd
+*.sub
+*.mdf
+*.mds
+*.chd
+*.ecm
+*.pbp
+*.ppf
+*.xdelta
+*.7z
+*.zip
+
+# Saves, logs and release output
+*.kfs
+*.kfs.map
+*.kfs.bak
+kf.log
+/dist/

@@ -178,6 +178,12 @@ void tmd_project_vertices(s32 count, const MATRIX *model, const kf::Projection &
         projected->sxy.vector = {point.x, point.y};
         projected->p2 = point.fog << KF_TMD_DEFAULT_PERSPECTIVE_SHIFT;
         projected->sz = point.depth;
+        projected->fx = point.fx;
+        projected->fy = point.fy;
+        projected->w = point.w;
+        projected->cx = point.cx;
+        projected->cy = point.cy;
+        projected->cz = point.cz;
         projected++;
         vertex++;
     }
