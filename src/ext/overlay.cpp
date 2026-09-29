@@ -425,7 +425,10 @@ SDL_Window *window() { return main_window; }
 
 bool overlay_open() { return open; }
 bool overlay_captures_input() { return open; }
-bool pause_requested() { return open && settings().pause_when_open; }
+bool pause_requested() {
+    return (open && settings().pause_when_open) || (automap_full_open() && settings().map_pause);
+}
+bool redraw_while_paused() { return open || automap_full_open(); }
 
 ViewRect game_view() {
     int width = 0, height = 0;
@@ -561,8 +564,9 @@ void draw(int width, int height) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
-    automap_draw(last_context);
+    // After mod HUDs, so the full map covers them.
     mods_draw_hud();
+    automap_draw(last_context);
     draw_message(width, height);
     if (settings().show_fps) {
         char text[32];

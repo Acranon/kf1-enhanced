@@ -68,6 +68,10 @@ static constexpr double mouse_degrees_per_pixel = 0.12;
 static constexpr double angle_units_per_turn = 4096;
 static constexpr double degrees_per_turn = 360;
 
+#if KF_EXT
+static void capture_frame_if_requested(int width, int height);
+#endif
+
 static void present_retained_frame() {
     int width = 0, height = 0;
     SDL_GetWindowSizeInPixels(host.window, &width, &height);
@@ -75,6 +79,7 @@ static void present_retained_frame() {
         renderer_present_retained(&host.renderer, width, height);
 #if KF_EXT
         ext::draw(width, height);
+        capture_frame_if_requested(width, height);
 #endif
         SDL_GL_SwapWindow(host.window);
     }
@@ -447,9 +452,11 @@ void host_poll() {
         update_pause();
         if (!host.paused)
             return;
+        // Mouse movement while held (full map, overlay) must not turn the camera afterwards.
+        host.input.pending.look_x = host.input.pending.look_y = 0;
 #if KF_EXT
         // The game is held here, so keep the overlay itself animating.
-        if (ext::overlay_open() && host.focused && !smooth_redraw_paused())
+        if (ext::redraw_while_paused() && host.focused && !smooth_redraw_paused())
             present_retained_frame();
 #endif
         platform_yield(unfocused_poll_interval_ns);

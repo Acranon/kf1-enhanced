@@ -19,6 +19,8 @@ bool process_event(const SDL_Event &event);
 bool overlay_open();
 // The game clock and audio stop while this is true.
 bool pause_requested();
+// The overlay or full map is showing while the game is held.
+bool redraw_while_paused();
 // File watching and settings persistence; cheap enough to call on every host poll.
 void poll();
 // Once per game-presented frame, before draw().

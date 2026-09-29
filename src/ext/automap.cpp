@@ -301,6 +301,10 @@ void automap_toggle_full() {
     full_map_open = !full_map_open;
 }
 
+bool automap_full_open() {
+    return full_map_open;
+}
+
 void automap_draw(int input_context) {
     const Settings &s = settings();
     const auto &map = automap_snapshot();
@@ -309,9 +313,13 @@ void automap_draw(int input_context) {
         full_map_open = false;
         return;
     }
-    // KF_TEST_FULLMAP: show the full map for automated captures.
-    static const bool test_full = std::getenv("KF_TEST_FULLMAP") != nullptr;
-    if (full_map_open || test_full)
+    // KF_TEST_FULLMAP: open the full map once in game, as M would (automated captures).
+    static bool test_open = std::getenv("KF_TEST_FULLMAP") != nullptr;
+    if (test_open) {
+        full_map_open = true;
+        test_open = false;
+    }
+    if (full_map_open)
         draw_full_map(map);
     else if (s.minimap)
         draw_minimap(map);
@@ -331,6 +339,8 @@ void automap_settings_page(bool &changed) {
         changed |= slider_input("Opacity", &s.minimap_opacity, 20, 100, "%d%%");
     }
     ImGui::TextDisabled("Press M in game for the full floor map.");
+    changed |= ImGui::Checkbox("Pause the game while the full map is open", &s.map_pause);
+    ImGui::SetItemTooltip("Off: the game keeps running, so you can walk around with the map open.");
     ImGui::SeparatorText("Exploration");
     changed |= ImGui::Checkbox("Fog of war", &s.map_fog);
     ImGui::SetItemTooltip("On: only places you have seen are drawn (the Watchman's or Sorcerer's map\nreveals the whole floor). Off: the whole floor is always shown.");

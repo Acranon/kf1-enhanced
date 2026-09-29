@@ -86,7 +86,8 @@ original PlayStation presentation.
   (green if better, red if worse).
 - Quick save and load (F2/F4) using the game's own save format, kept separate
   from the three normal save slots.
-- Automap: a north-up minimap and a full floor map (M). Fog of war shows only
+- Automap: a north-up minimap and a full floor map (M), which pauses the game
+  while open (or not, if you prefer to walk with it open). Fog of war shows only
   what you have seen (or turn it off); carrying the Watchman's or Sorcerer's map
   reveals the whole floor. Doors, warps (labelled with their floor), save points,
   fountains and people are marked once seen. Items, chests and enemies can be

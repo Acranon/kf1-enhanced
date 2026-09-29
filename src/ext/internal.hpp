@@ -55,6 +55,7 @@ struct Settings {
     int minimap_zoom = 8;      // cells from the centre to the edge
     int minimap_opacity = 85;   // percent
     bool map_fog = true;        // only draw what has been seen
+    bool map_pause = true;      // the full map pauses the game
     bool map_items = false;     // cheat markers
     bool map_chests = false;
     bool map_enemies = false;
@@ -75,6 +76,7 @@ void apply_render_settings();   // also on window resize
 // ---- automap ----
 void automap_draw(int input_context);   // minimap or full map, before the overlay windows
 void automap_toggle_full();
+bool automap_full_open();
 void automap_settings_page(bool &changed);
 
 // ---- mods ----
