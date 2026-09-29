@@ -22,7 +22,8 @@ your own copy of the disc.
 - Windows 10 or 11 (64-bit) and a GPU with OpenGL support.
 - A disc image of **King's Field (Japan) SLPS-00017** that you dumped yourself,
   with the [English translation patch](https://www.romhacking.net/translations/7308/)
-  applied. Both v1.0 and v1.0 with the save-bug fix work.
+  applied. Tested with v1.0 plus the save-bug fix; plain v1.0 should work too
+  (the save-bug fix is not needed here, since this version saves on its own).
   - Accepted formats: `.cue` + `.bin` (single track, MODE2/2352) or `.iso`.
   - An unpatched Japanese disc also works; the game is then in Japanese.
 
