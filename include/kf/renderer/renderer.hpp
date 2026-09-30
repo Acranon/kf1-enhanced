@@ -19,6 +19,8 @@ struct Vertex {
 // PC extensions, set from the Display settings.
 // Camera-space depth where faces reaching behind the camera are clipped (PC extension).
 inline constexpr float render_near_depth = 32.0f;
+// Entity whose faces are being enqueued (PC extension; see DrawFace::entity).
+inline u16 render_entity_tag = 0;
 inline bool render_subpixel = true;     // keep projected positions' fractions
 inline bool render_perspective = true;  // perspective-correct textures and shading
 inline bool render_depth_buffer = false; // per-pixel occlusion for 3D faces (experimental)
@@ -70,6 +72,9 @@ struct DrawFace {
     // PC extension: flat billboards (flames, spell and item sprites) would throw
     // their own quad's shape as a shadow, often from the light they carry.
     bool casts_shadow = true;
+    // PC extension: the moving entity this face belongs to (0: none), so frame
+    // smoothing can move it between its last two poses.
+    u16 entity = 0;
 };
 struct FaceList {
     const DrawFace *faces;

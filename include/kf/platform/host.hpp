@@ -27,6 +27,10 @@ void host_frame_camera(const VECTOR &position, const SVECTOR &rotation, const Pr
 void host_add_light(float x, float y, float z, float radius, float r, float g, float b, float flicker, u32 seed);
 // PC extension: map cells that block dynamic light (non-zero = solid), row-major.
 void host_light_occluders(const u8 *solid, int columns, int rows, float tile_size);
+// PC extension: an entity's world position and yaw this update, for frame
+// smoothing. yaw_sign: +1 or -1 for how its model applies the yaw, 0 to move it
+// without turning.
+void host_report_entity(u16 tag, s32 x, s32 y, s32 z, s32 yaw, int yaw_sign);
 void host_wait_frame();
 UpdatePacer host_begin_update_pacer(u32 steps_per_second);
 void host_wait_update(UpdatePacer &pacer);

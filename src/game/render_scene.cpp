@@ -67,19 +67,31 @@ void render_entities(void)
 
     tmd_select(tmd_context(), KF_TMD_SLOT_ENTITIES);
 
-    for (auto &object : map_object_state.objects) {
+    // PC extension: tag each moving thing's faces and report its pose, so frame
+    // smoothing can move it between updates (tags: objects 1.., actors 256..,
+    // effects 512.., events 1024..).
+    auto tag = [](int base, std::size_t index, s32 x, s32 y, s32 z, s32 yaw, int yaw_sign) {
+        kf::render_entity_tag = static_cast<u16>(base + index);
+        kf::host_report_entity(kf::render_entity_tag, x, y, z, yaw, yaw_sign);
+    };
+    for (std::size_t i = 0; i < std::size(map_object_state.objects); ++i) {
+        auto &object = map_object_state.objects[i];
         if (object.object_id < KF_MAP_OBJECT_RENDER_ID_END
             && render_cell_is_visible(object.cell_x, object.cell_z, origin)) {
+            tag(1, i, object.position.vx, object.position.vy, object.position.vz, object.rotation.angles.y, 1);
             render_map_object(&object);
         }
     }
 
-    for (auto &actor : actor_state.actors) {
+    for (std::size_t i = 0; i < std::size(actor_state.actors); ++i) {
+        auto &actor = actor_state.actors[i];
         if (actor.lifecycle == KF_ACTOR_LIFECYCLE_ACTIVE
             && render_actor_is_visible(actor, origin)) {
+            tag(256, i, actor.position.vx, actor.position.vy, actor.position.vz, actor.rotation.angles.y, -1);
             render_actor(&actor);
         }
     }
+    kf::render_entity_tag = 0;
 
     game_graphics_runtime.active_render_color.b = KF_FLOOR_ITEM_RENDER_BRIGHTNESS;
     game_graphics_runtime.active_render_color.g = KF_FLOOR_ITEM_RENDER_BRIGHTNESS;
@@ -101,20 +113,25 @@ void render_entities(void)
         }
     }
 
-    for (auto &sprite : effect_state.records) {
+    for (std::size_t i = 0; i < std::size(effect_state.records); ++i) {
+        auto &sprite = effect_state.records[i];
         if (sprite.type == KF_EFFECT_SLOT_FREE || sprite.render_id.model == KF_EFFECT_MODEL_NONE) {
             continue;
         }
         if (render_cell_is_visible(
                 sprite.position.vx / KF_MAP_TILE_SIZE, sprite.position.vz / KF_MAP_TILE_SIZE, origin)) {
+            tag(512, i, sprite.position.vx, sprite.position.vy, sprite.position.vz, 0, 0);
             render_actor_sprite(&sprite, &render_light_matrices[KF_RENDER_LIGHT_EFFECT]);
         }
     }
 
-    for (auto &event : map_runtime_state.events) {
+    for (std::size_t i = 0; i < std::size(map_runtime_state.events); ++i) {
+        auto &event = map_runtime_state.events[i];
         if (event.state == KF_MAP_EVENT_ACTIVE
             && render_cell_is_visible(event.cell_x, event.cell_z, origin)) {
+            tag(1024, i, event.reference_position.vx, event.reference_position.vy, event.reference_position.vz, 0, 0);
             render_map_event(&event, &game_graphics_runtime.light_matrix_copy);
         }
     }
+    kf::render_entity_tag = 0;
 }

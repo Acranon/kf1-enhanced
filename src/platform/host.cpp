@@ -45,6 +45,8 @@ struct HostState {
     bool focused, mouse_captured, resume_mouse_capture;
     bool paused, overlay_was_open, cursor_released, recapture_mouse;
     Projection clip_projection;
+    struct EntityPose { u16 tag; float x, y, z; s32 yaw; s8 yaw_sign; };
+    std::vector<EntityPose> frame_poses;
     std::vector<DrawFace> clipped_faces;
     u32 quick_pressed;
     bool opening_load_pressed;
@@ -716,6 +718,13 @@ void host_show_message(const char *text) {
 void host_begin_frame() {
     host.frame_count = 0;
     host.frame_light_count = 0;
+    host.frame_poses.clear();
+    render_entity_tag = 0;
+}
+
+void host_report_entity(u16 tag, s32 x, s32 y, s32 z, s32 yaw, int yaw_sign) {
+    host.frame_poses.push_back({tag, static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), yaw,
+                                static_cast<s8>(yaw_sign)});
 }
 
 void host_enqueue_face(const DrawFace &face) {
@@ -731,7 +740,8 @@ void host_enqueue_face(const DrawFace &face) {
     }
     // Animated instances reuse the same projection/morph scratch storage. No
     // pointer into that storage survives this submission.
-    host.frame_faces[host.frame_count++] = face;
+    host.frame_faces[host.frame_count] = face;
+    host.frame_faces[host.frame_count++].entity = render_entity_tag;
 }
 
 void host_present_frame(const FrameStyle &style) {
@@ -933,6 +943,11 @@ struct FrameSmoothing {
     HostState::FrameLight lights[render_light_capacity];
     int light_count = 0;
     bool active = false;             // the picture on screen is a smoothable world frame
+    // Per entity tag: the current update's pose and the motion back to the
+    // previous one (so the shown pose is current + (1 - alpha) * motion).
+    struct EntityMotion { bool valid; float x, y, z, back_x, back_y, back_z, back_yaw; s8 yaw_sign; };
+    std::vector<EntityMotion> motion;
+    std::vector<HostState::EntityPose> poses;
     double refresh_hz = 0;
     Uint64 refresh_checked_ns = 0;
 };
@@ -1005,8 +1020,18 @@ void smooth_present(Uint64 now) {
     const float offset[3] = {b.position.vx - shown_x, b.position.vy - shown_y, b.position.vz - shown_z};
     const float distance = b.projection.distance;
     std::size_t kept = 0;
+    const float back = static_cast<float>(1.0 - alpha);
     for (std::size_t i = 0; i < smooth.count; ++i) {
         DrawFace face = smooth.faces[i];
+        const FrameSmoothing::EntityMotion *moving = face.entity && face.entity < smooth.motion.size()
+            && smooth.motion[face.entity].valid ? &smooth.motion[face.entity] : nullptr;
+        float turn_cos = 1, turn_sin = 0;
+        if (moving && moving->yaw_sign) {
+            // The model applies R_y(sign * yaw); turning it further by t is R_y(sign * t).
+            const float turn = moving->back_yaw * back * moving->yaw_sign;
+            turn_cos = std::cos(turn);
+            turn_sin = std::sin(turn);
+        }
         bool visible = true;
         for (unsigned v = 0; v < static_cast<unsigned>(face.shape) && visible; ++v) {
             Vertex &vertex = face.vertices[v];
@@ -1016,6 +1041,15 @@ void smooth_present(Uint64 now) {
             float world[3];
             for (int r = 0; r < 3; ++r)
                 world[r] = view_now[0][r] * vertex.cx + view_now[1][r] * vertex.cy + view_now[2][r] * vertex.cz + offset[r];
+            if (moving) {
+                // world[] is relative to the shown camera; so is the entity's origin.
+                const float origin[3] = {moving->x - shown_x, moving->y - shown_y, moving->z - shown_z};
+                const float rx = world[0] - origin[0], rz = world[2] - origin[2];
+                // R_y(t) = [[cos, 0, -sin], [0, 1, 0], [sin, 0, cos]] (matrix_set_rotation_y).
+                world[0] = origin[0] + turn_cos * rx - turn_sin * rz + moving->back_x * back;
+                world[1] += moving->back_y * back;
+                world[2] = origin[2] + turn_sin * rx + turn_cos * rz + moving->back_z * back;
+            }
             float camera[3];
             for (int r = 0; r < 3; ++r)
                 camera[r] = view_shown[r][0] * world[0] + view_shown[r][1] * world[1] + view_shown[r][2] * world[2];
@@ -1092,6 +1126,27 @@ bool smooth_take_frame(const FaceList *faces) {
         : std::clamp(now - smooth.current_ns, smooth_interval_min_ns, smooth_interval_max_ns);
     smooth.previous = jump ? next : smooth.current;
     smooth.current = next;
+    // Entities: pair this update's poses with the last update's by tag.
+    constexpr float entity_snap_distance = 3000.0f;   // farther in one update: a new occupant or a warp
+    constexpr int entity_tags = 2048;
+    smooth.motion.assign(entity_tags, {});
+    std::vector<const HostState::EntityPose *> last(entity_tags, nullptr);
+    if (!jump)
+        for (const auto &pose : smooth.poses)
+            if (pose.tag < entity_tags)
+                last[pose.tag] = &pose;
+    for (const auto &pose : host.frame_poses) {
+        if (pose.tag >= entity_tags || !last[pose.tag])
+            continue;
+        const auto &before = *last[pose.tag];
+        const float dx = before.x - pose.x, dy = before.y - pose.y, dz = before.z - pose.z;
+        if (std::abs(dx) > entity_snap_distance || std::abs(dy) > entity_snap_distance || std::abs(dz) > entity_snap_distance)
+            continue;
+        const int turn = pose.yaw_sign ? angle_delta(pose.yaw, before.yaw) : 0;
+        smooth.motion[pose.tag] = {true, pose.x, pose.y, pose.z, dx, dy, dz,
+                                   static_cast<float>(turn) * 6.28318531f / 4096.0f, pose.yaw_sign};
+    }
+    smooth.poses = host.frame_poses;
     smooth.current_ns = now;
     smooth.have_current = true;
     smooth.active = true;
