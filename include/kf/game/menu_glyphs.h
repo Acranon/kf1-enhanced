@@ -45,6 +45,12 @@ inline constexpr s16 equip[] = {0x70, 0x71, MENU_TEXT_END};
 inline constexpr s16 cancel[] = {0x63, 0x61, 0x6a, MENU_TEXT_END};
 inline constexpr s16 pickup[] = {0x53, 0x6a, MENU_TEXT_END};
 inline constexpr s16 unequip[] = {0x59, MENU_TEXT_DAKUTEN | 0x4c, 0x4c, MENU_TEXT_END};
+// Port additions for the Configuration menu's language row (from sushi-shi's
+// port, with its "n" corrected to glyph 0x67): "gengo", "nihongo" and
+// "tsukaemasen" in the original kana.
+inline constexpr s16 language[] = {MENU_TEXT_DAKUTEN | 0x48, 0x67, MENU_TEXT_DAKUTEN | 0x49, MENU_TEXT_END};
+inline constexpr s16 language_name[] = {0x55, 0x5d, 0x67, MENU_TEXT_DAKUTEN | 0x49, MENU_TEXT_END};
+inline constexpr s16 language_unavailable[] = {0x51, 0x45, 0x43, 0x5e, 0x4d, 0x67, MENU_TEXT_END};
 }
 
 // John Osborne's English patch v1.0 (with HwitVlf's save fix) redraws the atlas
@@ -78,6 +84,11 @@ inline constexpr s16 cancel[] = {0x50, 0x0, MENU_TEXT_BLANK, MENU_TEXT_END};
 // The save fix shows "KK" here to avoid a console freeze; the port uses NO.
 inline constexpr s16 save_no[] = {0x50, 0x0, MENU_TEXT_BLANK, MENU_TEXT_END};
 inline constexpr s16 unequip[] = {MENU_TEXT_BLANK, 0x414e, 0x414f, MENU_TEXT_END};
+// LANGUAGE, ENGLISH and NO DATA from the translation's capital letters (the
+// ones that spell BACK and COMPASS), as in sushi-shi's port.
+inline constexpr s16 language[] = {0x136, 0xdc, 0x50, 0x146, 0x11, 0xdc, 0x146, 0x138, MENU_TEXT_END};
+inline constexpr s16 language_name[] = {0x138, 0x50, 0x146, 0x136, 0x4, 0x134, 0x3, MENU_TEXT_END};
+inline constexpr s16 language_unavailable[] = {0x50, 0x0, MENU_TEXT_BLANK, 0xb, 0xdc, 0x10, 0xdc, MENU_TEXT_END};
 }
 
 // Active sequences; menu_glyphs_use_english() switches them for the patched atlas.
@@ -125,6 +136,61 @@ inline const s16 *equip = japanese::equip;
 inline const s16 *cancel = japanese::cancel;
 inline const s16 *pickup = japanese::pickup;
 inline const s16 *unequip = japanese::unequip;
+inline const s16 *language = japanese::language;
+inline const s16 *language_name = japanese::language_name;
+inline const s16 *language_unavailable = japanese::language_unavailable;
+
+// Back to the original labels (the language can change during play).
+inline void menu_glyphs_use_japanese()
+{
+    on = japanese::on;
+    off = japanese::off;
+    experience = japanese::experience;
+    level = japanese::level;
+    character_class = japanese::character_class;
+    floor = japanese::floor;
+    hp = japanese::hp;
+    mp = japanese::mp;
+    status = japanese::status;
+    gold = japanese::gold;
+    healthy = japanese::healthy;
+    slowed = japanese::slowed;
+    poison = japanese::poison;
+    darkness = japanese::darkness;
+    curse = japanese::curse;
+    physical_power = japanese::physical_power;
+    magic_power = japanese::magic_power;
+    total_attack = japanese::total_attack;
+    total_defense = japanese::total_defense;
+    attack = japanese::attack;
+    defense = japanese::defense;
+    cutting = japanese::cutting;
+    striking = japanese::striking;
+    piercing = japanese::piercing;
+    holy = japanese::holy;
+    fire = japanese::fire;
+    poison_resistance = japanese::poison_resistance;
+    magic_defense = japanese::magic_defense;
+    quantity = japanese::quantity;
+    use = japanese::use;
+    drop = japanese::drop;
+    yes = japanese::yes;
+    no = japanese::no;
+    buy = japanese::buy;
+    sell = japanese::sell;
+    equip = japanese::equip;
+    cancel = japanese::cancel;
+    pickup = japanese::pickup;
+    unequip = japanese::unequip;
+    language = japanese::language;
+    language_name = japanese::language_name;
+    language_unavailable = japanese::language_unavailable;
+    level_summary = japanese::level;
+    gold_summary = japanese::gold;
+    gold_price = japanese::gold;
+    save_yes = japanese::yes;
+    save_no = japanese::no;
+}
 
 inline void menu_glyphs_use_english()
 {
@@ -150,6 +216,9 @@ inline void menu_glyphs_use_english()
     magic_defense = english::magic_defense;
     use = english::ok;
     drop = english::drop;
+    // The patch left the generic list's yes/no untranslated; use OK/NO there too.
+    yes = english::ok;
+    no = english::save_no;
     save_yes = english::ok;
     save_no = english::save_no;
     buy = english::ok;
@@ -158,5 +227,8 @@ inline void menu_glyphs_use_english()
     cancel = english::cancel;
     pickup = english::ok;
     unequip = english::unequip;
+    language = english::language;
+    language_name = english::language_name;
+    language_unavailable = english::language_unavailable;
 }
 }

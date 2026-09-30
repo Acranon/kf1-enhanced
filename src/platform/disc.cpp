@@ -1,5 +1,7 @@
 #include <kf/platform/disc.hpp>
 #include <kf/platform/assets.hpp>
+#include <kf/platform/disc_layout.hpp>
+#include <string>
 #include <cerrno>
 #include <cctype>
 #include <cstdio>
@@ -219,7 +221,7 @@ static bool write_asset(int root, const Asset &asset) {
 
 #endif
 
-bool disc_extract(const char *source, const char *destination) {
+bool disc_import_image(const char *source, AssetTable *assets, DiscMatch *match) {
     std::size_t size;
     FILE *file = open_disc(source, &size);
     if (!file) {
@@ -253,41 +255,104 @@ bool disc_extract(const char *source, const char *destination) {
         ok = false;
     if (!ok)
         std::fprintf(stderr, "%s\n", importer->message);
-#ifdef _WIN32
-    std::error_code error;
-    const std::filesystem::path root = std::filesystem::path(reinterpret_cast<const char8_t *>(destination));
-    if (ok && !std::filesystem::create_directory(root, error)) {
-        std::fprintf(stderr, "Cannot create %s: %s. Extraction requires a new directory; use --data to reuse one.\n",
-                     destination, error ? error.message().c_str() : "already exists");
-        ok = false;
-    } else if (ok) {
-        for (std::size_t i = 0; ok && i < importer->assets.count; ++i)
-            ok = write_asset(root, importer->assets.entries[i]);
-        if (!ok)
-            std::fprintf(stderr, "Extraction failed; partial files remain in %s. No existing directory was replaced.\n", destination);
-        else
-            std::printf("Extracted %zu verified files to %s\n", importer->assets.count, destination);
+    if (ok) {
+        *assets = importer->assets;
+        importer->assets = {};
+        *match = assets_classify(assets);
     }
-#else
-    if (ok && ::mkdir(destination, S_IRWXU) != 0) {
-        std::fprintf(stderr, "Cannot create %s: %s. Extraction requires a new directory; use --data to reuse one.\n",
-                     destination, std::strerror(errno));
-        ok = false;
-    } else if (ok) {
-        const int root = ::open(destination, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        ok = root >= 0;
-        for (std::size_t i = 0; ok && i < importer->assets.count; ++i)
-            ok = write_asset(root, importer->assets.entries[i]);
-        if (root >= 0 && ::close(root) != 0)
-            ok = false;
-        if (!ok)
-            std::fprintf(stderr, "Extraction failed; partial files remain in %s. No existing directory was replaced.\n", destination);
-        else
-            std::printf("Extracted %zu verified files to %s\n", importer->assets.count, destination);
-    }
-#endif
     disc_import_release(importer);
     delete importer;
+    return ok;
+}
+
+#ifdef _WIN32
+static std::filesystem::path native_path(const char *path) {
+    return std::filesystem::path(reinterpret_cast<const char8_t *>(path));
+}
+#endif
+
+bool resource_tree_write(const AssetTable &assets, const char *destination) {
+#ifdef _WIN32
+    // Written beside the destination first and renamed when complete, so an
+    // interrupted write never leaves a partial tree that looks usable.
+    std::error_code error;
+    const auto root = native_path(destination);
+    auto partial = root;
+    partial += ".partial";
+    std::filesystem::remove_all(partial, error);
+    if (std::filesystem::exists(root, error)) {
+        std::fprintf(stderr, "Cannot write %s: it already exists.\n", destination);
+        return false;
+    }
+    std::filesystem::create_directories(partial, error);
+    bool ok = !error;
+    for (std::size_t i = 0; ok && i < assets.count; ++i)
+        ok = write_asset(partial, assets.entries[i]);
+    if (ok) {
+        std::filesystem::rename(partial, root, error);
+        ok = !error;
+    }
+    if (!ok) {
+        std::fprintf(stderr, "Cannot write the game files to %s.\n", destination);
+        std::filesystem::remove_all(partial, error);
+        return false;
+    }
+#else
+    if (::mkdir(destination, S_IRWXU) != 0) {
+        std::fprintf(stderr, "Cannot create %s: %s. Extraction requires a new directory; use --data to reuse one.\n",
+                     destination, std::strerror(errno));
+        return false;
+    }
+    const int root = ::open(destination, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    bool ok = root >= 0;
+    for (std::size_t i = 0; ok && i < assets.count; ++i)
+        ok = write_asset(root, assets.entries[i]);
+    if (root >= 0 && ::close(root) != 0)
+        ok = false;
+    if (!ok) {
+        std::fprintf(stderr, "Extraction failed; partial files remain in %s. No existing directory was replaced.\n", destination);
+        return false;
+    }
+#endif
+    std::printf("Wrote %zu game files to %s\n", assets.count, destination);
+    return true;
+}
+
+bool resource_tree_read(const char *directory, AssetTable *assets) {
+    // Exactly the retail file list, so nothing else in the folder is read.
+    for (const auto &entry : slps00017_layout) {
+        std::string path = directory;
+        path += '/';
+        path += entry.path;
+        // Windows drops a trailing dot from file names ("E0." is stored as "E0").
+        if (!path.empty() && path.back() == '.')
+            path.pop_back();
+        std::size_t size;
+        FILE *file = open_image(path.c_str(), &size);
+        if (!file && entry.size == 0) {
+            ByteBuffer empty{};
+            if (!assets_append(assets, entry.path, &empty))
+                return false;
+            continue;
+        }
+        if (!file)
+            return false;
+        ByteBuffer bytes{};
+        bool ok = size == entry.size && buffer_resize(&bytes, size) && std::fread(bytes.data, 1, size, file) == size;
+        std::fclose(file);
+        ok = ok && assets_append(assets, entry.path, &bytes);
+        buffer_release(&bytes);
+        if (!ok)
+            return false;
+    }
+    return true;
+}
+
+bool disc_extract(const char *source, const char *destination) {
+    AssetTable assets{};
+    DiscMatch match;
+    const bool ok = disc_import_image(source, &assets, &match) && resource_tree_write(assets, destination);
+    assets_release(&assets);
     return ok;
 }
 }

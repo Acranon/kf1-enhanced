@@ -504,6 +504,15 @@ enum {
 void menu_config_panel_draw(
     MenuGlyphString on_label, MenuGlyphString off_label, KfPlayerOption *option_states);
 
+// Copies a label sequence up to its end marker.
+static void menu_copy_label(s16 *codes, const s16 *sequence)
+{
+    s32 i = 0;
+    for (; i < MENU_GLYPHS_PER_ROW - 1 && sequence[i] != MENU_TEXT_END; i++)
+        codes[i] = sequence[i];
+    codes[i] = MENU_TEXT_END;
+}
+
 void menu_config_panel(void)
 {
     KfPlayerOption states[KF_MENU_CONFIG_SETTING_COUNT];
@@ -515,6 +524,24 @@ void menu_config_panel(void)
     u32 prev;
     KfMenuResult phase = KF_MENU_RESULT_PENDING;
     KfPlayerOption music_orig;
+    // Port addition: the language row switches between Japanese and English at
+    // once; without the other language's files it says so (F1 can add them).
+    bool language_missing = false;
+    const auto change_option = [&] {
+        if (row == KF_MENU_CONFIG_LANGUAGE_ROW) {
+            const auto target = kf::game_language() == kf::Language::Japanese
+                ? kf::Language::English : kf::Language::Japanese;
+            language_missing = !kf::language_available(target);
+            if (!language_missing) {
+                kf::language_request(target);
+                language_missing = !game_apply_language();
+            }
+            menu_play_input_sound(language_missing ? MENU_SOUND_CANCEL_OR_ERROR : MENU_SOUND_CONFIRM);
+        } else if (row < KF_MENU_CONFIG_SETTING_COUNT) {
+            menu_play_input_sound(MENU_SOUND_CONFIRM);
+            states[row] = kf_enum_decode<KfPlayerOption>(states[row] == KF_PLAYER_OPTION_OFF);
+        }
+    };
 
     kf::host_wait_buttons_released();
 
@@ -540,6 +567,15 @@ void menu_config_panel(void)
     menu_draw_window(KF_MENU_WINDOW_CONFIG, KF_MENU_CONFIG_ROW_COUNT, row, confirm);
     menu_present_frame();
     do {
+        // A change requested from the F1 overlay while this menu is open.
+        if (game_apply_language()) {
+            language_missing = false;
+            option_a.glyphs.codes[0] = menu_glyphs::on[0];
+            option_a.glyphs.codes[1] = menu_glyphs::on[1];
+            option_b.glyphs.codes[0] = menu_glyphs::off[0];
+            option_b.glyphs.codes[1] = menu_glyphs::off[1];
+            option_b.glyphs.codes[2] = menu_glyphs::off[2];
+        }
         if (confirm == KF_MENU_CONFIRM_REQUESTED || phase == KF_MENU_RESULT_CANCELLED) {
             menu_frame_begin();
             menu_config_panel_draw(option_a, option_b, states);
@@ -570,17 +606,14 @@ void menu_config_panel(void)
             }
         } else if ((kf::button_pressed(pad, prev, kf::Button::Right)) ||
                    (kf::button_pressed(pad, prev, kf::Button::Left))) {
-            if (row != KF_MENU_CONFIG_RETURN_ROW) {
-                menu_play_input_sound(MENU_SOUND_CONFIRM);
-                states[row] = kf_enum_decode<KfPlayerOption>(states[row] == KF_PLAYER_OPTION_OFF);
-            }
+            change_option();
         } else if (kf::button_pressed(pad, prev, kf::Button::Confirm)) {
-            menu_play_input_sound(MENU_SOUND_CONFIRM);
             if (row == KF_MENU_CONFIG_RETURN_ROW) {
+                menu_play_input_sound(MENU_SOUND_CONFIRM);
                 confirm = KF_MENU_CONFIRM_REQUESTED;
                 phase = KF_MENU_RESULT_CANCELLED;
             } else {
-                states[row] = kf_enum_decode<KfPlayerOption>(states[row] == KF_PLAYER_OPTION_OFF);
+                change_option();
             }
         } else if (kf::button_pressed(pad, prev, kf::Button::Back)) {
             menu_play_input_sound(MENU_SOUND_CANCEL_OR_ERROR);
@@ -588,6 +621,15 @@ void menu_config_panel(void)
         }
         menu_config_panel_draw(option_a, option_b, states);
         menu_draw_window(KF_MENU_WINDOW_CONFIG, KF_MENU_CONFIG_ROW_COUNT, row, confirm);
+        if (language_missing) {
+            MenuGlyphString message;
+            message.position = menu_window_layouts[kf_enum_encode<s32>(KF_MENU_WINDOW_CONFIG)]
+                                   .rows[KF_MENU_CONFIG_LANGUAGE_ROW].position;
+            message.position.x = CONFIG_OPTION_ON_X;
+            message.position.y += 16;
+            menu_copy_label(message.glyphs.codes, menu_glyphs::language_unavailable);
+            menu_draw_string(&menu_assets.glyph_atlas, &message);
+        }
         menu_present_frame();
     } while (1);
 
@@ -1840,7 +1882,17 @@ void menu_draw_window(KfMenuWindowKind window_kind, s32 count, s32 highlight, Kf
             if (row == highlight) {
                 menu_blit_sprite(&menu_assets.selection_cursor, &layout->rows[row].position);
             }
-            menu_draw_string(&menu_assets.glyph_atlas, &layout->rows[row]);
+            if (window_kind == KF_MENU_WINDOW_CONFIG && row == KF_MENU_CONFIG_LANGUAGE_ROW) {
+                // Port addition: "Language" and the language in use.
+                MenuGlyphString text = layout->rows[row];
+                menu_copy_label(text.glyphs.codes, menu_glyphs::language);
+                menu_draw_string(&menu_assets.glyph_atlas, &text);
+                text.position.x = CONFIG_OPTION_ON_X;
+                menu_copy_label(text.glyphs.codes, menu_glyphs::language_name);
+                menu_draw_string(&menu_assets.glyph_atlas, &text);
+            } else {
+                menu_draw_string(&menu_assets.glyph_atlas, &layout->rows[row]);
+            }
             row++;
         } while (row < count);
     }

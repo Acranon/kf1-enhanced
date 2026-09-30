@@ -22,6 +22,27 @@ bool texture_store_upload_tim(TextureStore *store, const u8 *bytes, std::size_t 
     return true;
 }
 
+bool texture_store_translate_tim(TextureStore *store, const u8 *before, std::size_t before_size,
+                                 const u8 *after, std::size_t after_size) {
+    if (!store->words)
+        return false;
+    auto *old_words = static_cast<u16 *>(std::calloc(texture_word_count * 2, sizeof(u16)));
+    if (!old_words)
+        return false;
+    auto *new_words = old_words + texture_word_count;
+    const bool valid = kf_tim_compose(before, before_size, old_words, texture_word_count) == KF_CODEC_OK &&
+        kf_tim_compose(after, after_size, new_words, texture_word_count) == KF_CODEC_OK;
+    if (valid) {
+        for (std::size_t i = 0; i < texture_word_count; ++i)
+            if (old_words[i] != new_words[i])
+                store->words[i] = new_words[i];
+        for (std::size_t i = 0; i < store->count; ++i)
+            store->entries[i].dirty = true;
+    }
+    std::free(old_words);
+    return valid;
+}
+
 bool texture_decode(Image *image, TextureSource source, const u16 *words, std::size_t count) {
     const auto mode = static_cast<unsigned>(source.format);
     if (!words || count < texture_word_count || source.format > TextureFormat::Direct16 || source.x >= texture_store_width ||

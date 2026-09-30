@@ -33,7 +33,7 @@ set_target_properties(kf_codecs PROPERTIES IMPORTED_LOCATION "${KF_CODEC_LIBRARY
 add_dependencies(kf_codecs kf_codecs_build)
 
 include(cmake/OriginalSources.cmake)
-add_library(kf_support STATIC src/platform/files.cpp src/platform/disc.cpp src/platform/assets.cpp src/platform/controls.cpp src/lib/fixed_math.cpp src/lib/random.cpp)
+add_library(kf_support STATIC src/platform/files.cpp src/platform/disc.cpp src/platform/assets.cpp src/platform/languages.cpp src/platform/translation.cpp src/platform/controls.cpp src/lib/fixed_math.cpp src/lib/random.cpp)
 target_include_directories(kf_support PUBLIC include)
 target_link_libraries(kf_support PUBLIC kf_codecs)
 target_compile_options(kf_support PRIVATE -Wall -Wextra -Wpedantic -Werror)

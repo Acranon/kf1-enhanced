@@ -6,11 +6,15 @@
 #include <imgui.h>
 #include <imgui_internal.h>   // FindRenderedTextEnd
 #include <kf/platform/host.hpp>
+#include <kf/platform/languages.hpp>
+#include <kf/platform/translation.hpp>
 #include <kf/renderer/renderer.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+#include <string>
 
 namespace kf::ext {
 namespace {
@@ -99,6 +103,113 @@ void set_open(bool value) {
         SDL_SetWindowRelativeMouseMode(main_window, false);
 }
 
+// A file chosen in a dialog. The dialog answers later, possibly on another
+// thread, so the page picks the result up on a later frame.
+enum class Pick { None, Patch, Disc };
+std::mutex pick_lock;
+Pick pick_pending = Pick::None, pick_done = Pick::None;
+std::string pick_path;
+
+void pick_file(Pick purpose) {
+    static const SDL_DialogFileFilter patch_filter[] = {{"English patch (.rar or .ppf)", "rar;ppf;zip;7z"}};
+    static const SDL_DialogFileFilter disc_filter[] = {{"Disc images", "cue;bin;iso"}};
+    {
+        std::lock_guard guard(pick_lock);
+        pick_pending = purpose;
+    }
+    SDL_ShowOpenFileDialog([](void *, const char *const *files, int) {
+        std::lock_guard guard(pick_lock);
+        pick_done = files && files[0] ? pick_pending : Pick::None;
+        pick_path = files && files[0] ? files[0] : "";
+        pick_pending = Pick::None;
+    }, nullptr, main_window, purpose == Pick::Patch ? patch_filter : disc_filter, 1, nullptr, false);
+}
+
+// Settings > Language: the game's language, and setting up the other one.
+void language_settings_page(bool &changed) {
+    auto &s = settings();
+    {
+        std::lock_guard guard(pick_lock);
+        if (pick_done == Pick::Patch)
+            language_task_patch_file(pick_path);
+        else if (pick_done == Pick::Disc)
+            language_task_add_disc(pick_path);
+        pick_done = Pick::None;
+    }
+    std::string message;
+    const auto task = language_task_state(&message);
+    const bool english = language_available(Language::English);
+    const bool japanese = language_available(Language::Japanese);
+
+    ImGui::TextWrapped("King's Field was released only in Japanese. The English version is John Osborne's fan "
+                       "translation (v1.0). Saves work in both languages.");
+    ImGui::Spacing();
+    int choice = language_requested() == Language::English ? 1 : 0;
+    ImGui::BeginDisabled(!english || !japanese);
+    bool picked = ImGui::RadioButton("English", &choice, 1);
+    ImGui::SameLine();
+    picked |= ImGui::RadioButton("Japanese", &choice, 0);
+    ImGui::EndDisabled();
+    if (picked) {
+        s.language = choice ? "en" : "ja";
+        language_preference = choice ? Language::English : Language::Japanese;
+        language_request(language_preference);
+        changed = true;
+    }
+    if (language_requested() != game_language())
+        ImGui::TextDisabled("Switches to %s when you return to the game.", language_name(language_requested()));
+    else
+        ImGui::TextDisabled("In use: %s. The game's Configuration menu can switch too.", language_name(game_language()));
+
+    ImGui::SeparatorText("Game files");
+    for (const auto language : {Language::English, Language::Japanese}) {
+        const bool ready = language_available(language);
+        ImGui::BulletText("%s: %s", language_name(language), ready ? "ready" : "not set up");
+        if (ready)
+            ImGui::SetItemTooltip("%s", language_folder(language).c_str());
+    }
+    ImGui::Spacing();
+    const bool working = task == LanguageTask::Working;
+    ImGui::BeginDisabled(working);
+    if (!english && japanese) {
+        ImGui::TextWrapped("Add English with the translator's patch, applied to your Japanese game files:");
+        if (ImGui::Button("Download English patch"))
+            language_task_download_english();
+        ImGui::SetItemTooltip("Downloads John Osborne's release (about 6 MB) from the Internet Archive copy of\n"
+                              "the translator's site, checks it, and builds English next to Japanese.");
+        ImGui::SameLine();
+        if (ImGui::Button("Choose patch file..."))
+            pick_file(Pick::Patch);
+        ImGui::SetItemTooltip("Kings_Field_Jap_to_Eng_v1.0.rar, or the .ppf inside it.");
+    }
+    if (!japanese) {
+        ImGui::TextWrapped("Japanese needs your original Japanese disc image (.cue/.bin or .iso); a disc with the "
+                           "English patch applied can't be turned back.");
+        if (ImGui::Button("Add Japanese disc..."))
+            pick_file(Pick::Disc);
+    }
+    ImGui::EndDisabled();
+    if (working) {
+        ImGui::TextDisabled("%s", message.c_str());
+    } else if (task == LanguageTask::Done) {
+        ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.55f, 1.0f), "%s", message.c_str());
+        const auto other = game_language() == Language::English ? Language::Japanese : Language::English;
+        if (language_available(other) && ImGui::Button(other == Language::English ? "Switch to English" : "Switch to Japanese")) {
+            s.language = language_code(other);
+            language_preference = other;
+            language_request(other);
+            language_task_clear();
+            changed = true;
+        }
+    } else if (task == LanguageTask::Failed) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.45f, 1.0f), "%s", message.c_str());
+        ImGui::PopTextWrapPos();
+        if (ImGui::Button("OK"))
+            language_task_clear();
+    }
+}
+
 void draw_settings_window() {
     ImGui::SetNextWindowSize(ImVec2(560, 420), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Settings", &show_settings)) {
@@ -106,7 +217,7 @@ void draw_settings_window() {
         return;
     }
     Settings &s = settings();
-    const char *pages[] = {"Display", "Audio", "Controls", "Gameplay", "Map", "Interface"};
+    const char *pages[] = {"Display", "Audio", "Controls", "Gameplay", "Language", "Map", "Interface"};
     ImGui::BeginChild("pages", ImVec2(130 * applied_scale, 0), ImGuiChildFlags_Borders);
     for (const char *page : pages)
         if (ImGui::Selectable(page, std::strcmp(settings_page, page) == 0))
@@ -259,6 +370,8 @@ void draw_settings_window() {
         }
     } else if (std::strcmp(settings_page, "Map") == 0) {
         automap_settings_page(changed);
+    } else if (std::strcmp(settings_page, "Language") == 0) {
+        language_settings_page(changed);
     } else if (std::strcmp(settings_page, "Gameplay") == 0) {
         ImGui::TextWrapped("Fixes for bugs in the original game. Turn them off to play exactly as on the PlayStation.");
         ImGui::Spacing();
@@ -583,6 +696,17 @@ void draw(int width, int height) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    // KF_TEST_SETTINGS=<page>: opens Settings on that page, for captures.
+    static const char *test_page = std::getenv("KF_TEST_SETTINGS");
+    if (test_page) {
+        open = show_settings = true;
+        show_mods = false;
+        settings_page = test_page;
+        test_page = nullptr;
+        // KF_TEST_LANGUAGE_TASK=download: presses "Download English patch".
+        if (const char *task = std::getenv("KF_TEST_LANGUAGE_TASK"); task && std::strcmp(task, "download") == 0)
+            language_task_download_english();
+    }
     // After mod HUDs, so the full map covers them.
     mods_draw_hud();
     automap_draw(last_context);

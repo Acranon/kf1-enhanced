@@ -49,6 +49,7 @@ struct Settings {
     int run_speed = 160;        // percent of walking speed while Shift is held
     bool run_toggle = false;    // Shift toggles running instead of being held
     int look_limit = 70;        // degrees the camera may tilt up or down (original: 17)
+    std::string language = "en";   // game language when both are set up: "en" or "ja"
     bool fix_ceiling_fall = true;   // bug fix: enemies fall after hitting a ceiling mid-jump
     bool fix_spatial_panning = true; // bug fix: flagged sounds get their panning adjustment
     bool minimap = true;

@@ -81,10 +81,16 @@ struct DiscImporter {
 // Identity metadata only; extracted resources remain ordinary, unchanged files.
 inline constexpr const char *retail_files_sha256 =
     "450b9f09ca34bedc1c8bc150e01b79bfe108c700dad2b2783246b926953deee2";
-// Retail: the untouched Japanese disc. Modified: the same file set with changed
-// contents, such as the English translation patch. Foreign: anything else.
-enum class DiscMatch { Retail, Modified, Foreign };
-DiscMatch assets_match_retail(AssetTable *table);
+// The same digest over every file except GAME.EXE, for the English translation
+// v1.0: GAME.EXE differs between v1.0 and v1.0 with HwitVlf's save fix, and the
+// port never runs it (its menu labels are native, see menu_glyphs.h).
+inline constexpr const char *english_resources_sha256 =
+    "3fafe2518f907b6feb13fe083975a2713ad678e5e65b36336a1161d2acb9ba76";
+// Japanese: the untouched disc. English: the translation patch v1.0 (with or
+// without the save fix). Modified: the same file set with other changes.
+// Foreign: anything else. Sorts the table by path.
+enum class DiscMatch { Japanese, English, Modified, Foreign };
+DiscMatch assets_classify(AssetTable *table);
 void disc_import_start(DiscImporter *importer, std::uint64_t disc_size);
 bool disc_import_waiting(const DiscImporter *importer);
 void disc_import_supply(DiscImporter *importer, const u8 *bytes, std::size_t size);

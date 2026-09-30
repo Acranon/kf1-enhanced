@@ -5,6 +5,7 @@
 #include <kf/audio/sound.hpp>
 #include <kf/platform/host.hpp>
 #include <kf/platform/input.hpp>
+#include <kf/platform/languages.hpp>
 #include <kf/renderer/renderer.hpp>
 #include <algorithm>
 #include <cmath>
@@ -104,6 +105,7 @@ void settings_load() {
     current.run_toggle = read_bool(controls, "run_toggle", current.run_toggle);
     current.look_limit = static_cast<int>(read_number(controls, "look_limit", current.look_limit));
     const cJSON *gameplay = cJSON_GetObjectItemCaseSensitive(document, "gameplay");
+    current.language = read_string(gameplay, "language", current.language);
     current.fix_ceiling_fall = read_bool(gameplay, "fix_ceiling_fall", current.fix_ceiling_fall);
     current.fix_spatial_panning = read_bool(gameplay, "fix_spatial_panning", current.fix_spatial_panning);
     const cJSON *map = cJSON_GetObjectItemCaseSensitive(document, "map");
@@ -164,6 +166,7 @@ void settings_save_if_dirty() {
     write_value(controls, "run_toggle", cJSON_CreateBool(current.run_toggle));
     write_value(controls, "look_limit", cJSON_CreateNumber(current.look_limit));
     cJSON *gameplay = object_entry(document, "gameplay");
+    write_value(gameplay, "language", cJSON_CreateString(current.language.c_str()));
     write_value(gameplay, "fix_ceiling_fall", cJSON_CreateBool(current.fix_ceiling_fall));
     write_value(gameplay, "fix_spatial_panning", cJSON_CreateBool(current.fix_spatial_panning));
     cJSON *map = object_entry(document, "map");
@@ -267,6 +270,9 @@ void apply_control_settings() {
     const int degrees = std::clamp(current.look_limit, 17, 85);
     player_pitch_limit = std::max(191, degrees * 4096 / 360);
     fix_actor_ceiling_fall = current.fix_ceiling_fall;
+    Language language;
+    if (language_parse(current.language.c_str(), &language))
+        language_preference = language;
     fix_spatial_panning = current.fix_spatial_panning;
 }
 

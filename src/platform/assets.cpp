@@ -254,13 +254,14 @@ static u32 le32(const u8 *p) {
 static u32 be32(const u8 *p) {
     return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
 }
-DiscMatch assets_match_retail(AssetTable *table) {
+DiscMatch assets_classify(AssetTable *table) {
     if (table->count != retail_resource_file_count)
         return DiscMatch::Foreign;
     std::sort(table->entries, table->entries + table->count,
               [](const Asset &a, const Asset &b) { return std::strcmp(a.path, b.path) < 0; });
-    Sha256 hash{};
+    Sha256 hash{}, resources{};
     sha256_init(&hash);
+    sha256_init(&resources);
     std::size_t total = 0;
     for (std::size_t i = 0; i < table->count; ++i) {
         const auto &asset = table->entries[i];
@@ -276,12 +277,20 @@ DiscMatch assets_match_retail(AssetTable *table) {
         sha256_update(&hash, sizes, sizeof sizes);
         sha256_update(&hash, reinterpret_cast<const u8 *>(asset.path), path_size);
         sha256_update(&hash, asset.bytes.data, asset.bytes.size);
+        if (std::strcmp(asset.path, "GAME.EXE") != 0) {
+            sha256_update(&resources, sizes, sizeof sizes);
+            sha256_update(&resources, reinterpret_cast<const u8 *>(asset.path), path_size);
+            sha256_update(&resources, asset.bytes.data, asset.bytes.size);
+        }
     }
-    char digest[sha256_hex_capacity];
+    char digest[sha256_hex_capacity], resources_digest[sha256_hex_capacity];
     sha256_finish(&hash, digest);
+    sha256_finish(&resources, resources_digest);
     if (std::strcmp(digest, retail_files_sha256) == 0)
-        return DiscMatch::Retail;
-    std::printf("Disc files differ from the untouched Japanese release (translation patch?); using them as they are.\n"
+        return DiscMatch::Japanese;
+    if (std::strcmp(resources_digest, english_resources_sha256) == 0)
+        return DiscMatch::English;
+    std::printf("Disc files differ from the Japanese release and the English translation v1.0; using them as they are.\n"
                 "Files digest: %s\n", digest);
     return DiscMatch::Modified;
 }
@@ -302,7 +311,7 @@ static void read_extent(DiscImporter *importer, const DiscExtent *file) {
 static void next_file(DiscImporter *importer) {
     if (importer->file_index == importer->file_count) {
         // Patched discs (the English translation) keep the retail file set.
-        if (assets_match_retail(&importer->assets) == DiscMatch::Foreign) {
+        if (assets_classify(&importer->assets) == DiscMatch::Foreign) {
             disc_import_fail(importer, "This disc image is not King's Field (Japan, SLPS-00017).");
             return;
         }

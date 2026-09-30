@@ -10,6 +10,8 @@
 #include <cmath>
 #include <limits>
 #include <type_traits>
+#include <string>
+#include <vector>
 #include <kf/lib/types.h>
 #include <kf/lib/fixed_math.hpp>
 #include <kf/lib/random.hpp>
@@ -20,6 +22,7 @@
 #include <kf/platform/module_state.hpp>
 #include <kf/platform/input.hpp>
 #include <kf/platform/automap.hpp>
+#include <kf/platform/languages.hpp>
 #include <kf/lib/codec.h>
 #include <kf/renderer/renderer.hpp>
 #include <kf/renderer/lighting.hpp>

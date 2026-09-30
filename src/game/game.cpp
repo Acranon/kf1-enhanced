@@ -23,6 +23,9 @@ void automap_publish(void);
 
 void game_main_loop(void)
 {
+    // A language chosen during the opening takes effect before anything loads.
+    kf::language_apply_pending();
+    game_use_language_labels();
     memset((void *)&game_graphics_runtime, 0, sizeof game_graphics_runtime);
     memset((void *)&actor_state, 0, sizeof actor_state);
     memset((void *)&map_object_state, 0, sizeof map_object_state);
@@ -57,6 +60,9 @@ void game_main_loop(void)
     player_warp_shimmer_at_player(KF_WARP_SHIMMER_SHRINK_REMOVE);
     game_next_overlay_mode = KF_OVERLAY_MODE_NONE;
     for (;;) {
+        // Between updates no menu or dialogue holds text, so a language change
+        // requested from the F1 overlay can be applied here.
+        game_apply_language();
         player_update();
         if (game_next_overlay_mode != KF_OVERLAY_MODE_NONE) {
             break;

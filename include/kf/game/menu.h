@@ -50,7 +50,9 @@ enum {
     KF_MENU_CONFIG_GAUGES_ROW = 2,
     KF_MENU_CONFIG_COMPASS_ROW = 3,
     KF_MENU_CONFIG_SETTING_COUNT = 4,
-    KF_MENU_CONFIG_RETURN_ROW = KF_MENU_CONFIG_SETTING_COUNT,
+    // Port addition: the language row sits between the settings and Return.
+    KF_MENU_CONFIG_LANGUAGE_ROW = KF_MENU_CONFIG_SETTING_COUNT,
+    KF_MENU_CONFIG_RETURN_ROW = KF_MENU_CONFIG_LANGUAGE_ROW + 1,
     KF_MENU_CONFIG_ROW_COUNT = KF_MENU_CONFIG_RETURN_ROW + 1
 };
 
@@ -329,6 +331,9 @@ enum class KfMenuModelAllocation : s32 {
 extern KfMenuModelAllocation menu_item_model_allocation_pending;
 
 extern void item_load_database(void);
+// Reloads the menu layouts, item and spell names and prices from COM/STAT.DAT
+// (after a language change).
+extern void menu_resources_reload(void);
 extern void item_menu_root(KfItemStockBank shop_bank);
 extern KfMenuResult item_pickup_confirm(KfObjectId item_id);
 extern void menu_add_frame_quad(void);

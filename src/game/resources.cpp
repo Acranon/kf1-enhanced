@@ -12,6 +12,13 @@
 #include <cstdio>
 #include <cstring>
 #include <kf/game/game.h>
+#include <kf/game/menu.h>
+#include <kf/game/menu_glyphs.h>
+#include <kf/lib/resource_file.h>
+#include <kf/platform/files.hpp>
+#include <kf/platform/languages.hpp>
+#include <kf/renderer/renderer.hpp>
+#include <vector>
 
 enum {
     MAP_VARIANT_ASSET_BUFFER_BYTES = 0x5a000,
@@ -233,4 +240,46 @@ void resources_reset_module_state(void)
     kf::restore_initial_value<map_floor_height_grid>();
     kf::restore_initial_value<map_collision_grid>();
     kf::restore_initial_value<map_cell_attribute_grid>();
+}
+
+// ---- Language switching (port addition) ----
+
+static std::vector<u8> language_common_images(void)
+{
+    std::vector<u8> bytes;
+    kf::DataFile file{};
+    if (resource_file_open(&file, "COM/MIX.TIM") != kf::FileResult::Ok)
+        return bytes;
+    bytes.resize(file.size);
+    if (kf::data_file_read(&file, bytes.data(), bytes.size()) != kf::FileResult::Ok)
+        bytes.clear();
+    kf::data_file_close(&file);
+    return bytes;
+}
+
+void game_use_language_labels(void)
+{
+    if (kf::game_language() == kf::Language::English)
+        menu_glyphs::menu_glyphs_use_english();
+    else
+        menu_glyphs::menu_glyphs_use_japanese();
+}
+
+bool game_apply_language(void)
+{
+    if (kf::language_requested() == kf::game_language())
+        return false;
+    const auto before = language_common_images();
+    if (!kf::language_apply_pending())
+        return false;
+    // The font and notification pictures live in the common images, which
+    // stay loaded; later floor, dialogue and picture loads use the new files.
+    const auto after = language_common_images();
+    if (before.empty() || after.empty() ||
+        !kf::texture_store_translate_tim(&kf::host_renderer()->textures, before.data(), before.size(),
+                                         after.data(), after.size()))
+        kf::host_fail("Cannot load the menu pictures for the selected language.");
+    menu_resources_reload();
+    game_use_language_labels();
+    return true;
 }

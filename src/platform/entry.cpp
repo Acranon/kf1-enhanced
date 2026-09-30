@@ -4,6 +4,8 @@
 #include <kf/platform/input.hpp>
 #include <kf/platform/files.hpp>
 #include <kf/platform/disc.hpp>
+#include <kf/platform/languages.hpp>
+#include <kf/platform/translation.hpp>
 #include <kf/platform/saves.hpp>
 #include <kf/platform/prelude.hpp>
 // Game sources compile inside namespace kf::game (cmake/OriginalSources.cmake), so
@@ -16,6 +18,8 @@ namespace kf::game {
 #endif
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <string>
 #include <vector>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -30,39 +34,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *kf_retail_files_hash() {
 EM_JS(void, browser_game_started, (), { Module['gameStarted'](); });
 #endif
 
-// The English patch rewrites menu label immediates in GAME.EXE, which the source
-// port does not execute. Detect it by the "use" label at 0x800283FC.
-static bool english_patch_present() {
-    constexpr std::size_t exe_header_bytes = 0x800;
-    constexpr std::uint32_t load_address = 0x80012000;
-    constexpr std::uint32_t use_label_address = 0x800283fc;
-    constexpr std::uint32_t english_use_label = 0x34020000; // ori $v0, $zero, 0
-    constexpr std::size_t offset = exe_header_bytes + (use_label_address - load_address);
-    std::vector<unsigned char> exe(512 * 1024);
-    std::size_t size = 0;
-    if (kf::data_file_read_into("GAME.EXE", exe.data(), exe.size(), &size) != kf::FileResult::Ok || size < offset + 4)
-        return false;
-    const std::uint32_t word = exe[offset] | exe[offset + 1] << 8 | exe[offset + 2] << 16 |
-        static_cast<std::uint32_t>(exe[offset + 3]) << 24;
-    return word == english_use_label;
-}
-
-#if defined(_WIN32)
-#include <filesystem>
-#include <string>
-// Release layout on Windows: the game data is copied out of the player's disc
-// image into a "data" folder beside the executable on first launch.
 namespace {
-std::filesystem::path executable_directory() {
-    const char *base = SDL_GetBasePath();
-    return base ? std::filesystem::path(reinterpret_cast<const char8_t *>(base)) : std::filesystem::path(".");
-}
-
-bool is_disc_image(const std::filesystem::path &path) {
-    auto extension = path.extension().u8string();
-    for (auto &c : extension)
-        c = static_cast<char8_t>(std::tolower(static_cast<unsigned char>(c)));
-    return extension == u8".cue" || extension == u8".bin" || extension == u8".iso";
+std::filesystem::path native_path(const char *path) {
+    return std::filesystem::path(reinterpret_cast<const char8_t *>(path));
 }
 
 std::string utf8(const std::filesystem::path &path) {
@@ -70,29 +44,49 @@ std::string utf8(const std::filesystem::path &path) {
     return std::string(text.begin(), text.end());
 }
 
-// A .cue beside the executable wins over a .bin or .iso.
-std::string disc_beside(const std::filesystem::path &directory) {
-    std::error_code error;
-    std::string found;
-    for (const auto &entry : std::filesystem::directory_iterator(directory, error)) {
-        if (!entry.is_regular_file(error) || !is_disc_image(entry.path()))
-            continue;
-        if (entry.path().extension() == ".cue" || entry.path().extension() == ".CUE")
-            return utf8(entry.path());
-        if (found.empty())
-            found = utf8(entry.path());
-    }
-    return found;
+std::filesystem::path executable_directory() {
+    const char *base = SDL_GetBasePath();
+    return base ? native_path(base) : std::filesystem::path(".");
 }
 
-std::string ask_for_disc() {
+std::string lower_extension(const std::filesystem::path &path) {
+    auto extension = path.extension().u8string();
+    for (auto &c : extension)
+        c = static_cast<char8_t>(std::tolower(static_cast<unsigned char>(c)));
+    return std::string(extension.begin(), extension.end());
+}
+
+bool is_disc_image(const std::filesystem::path &path) {
+    const auto extension = lower_extension(path);
+    return extension == ".cue" || extension == ".bin" || extension == ".iso";
+}
+
+// The translator's patch, or an archive holding it.
+bool is_patch_file(const std::filesystem::path &path) {
+    const auto extension = lower_extension(path);
+    return extension == ".ppf" || extension == ".rar" || extension == ".zip" || extension == ".7z";
+}
+
+void show_error(const char *text) {
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "King's Field Enhanced", text, nullptr);
+}
+
+// Returns the index of the button pressed, or -1 when the box was closed.
+int ask(const char *text, std::initializer_list<const char *> labels) {
+    std::vector<SDL_MessageBoxButtonData> buttons;
+    int id = 0;
+    for (const char *label : labels)
+        buttons.push_back({id == 0 ? SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT : 0u, id++, label});
+    const SDL_MessageBoxData box{SDL_MESSAGEBOX_INFORMATION, nullptr, "King's Field Enhanced", text,
+                                 static_cast<int>(buttons.size()), buttons.data(), nullptr};
+    int pressed = -1;
+    return SDL_ShowMessageBox(&box, &pressed) ? pressed : -1;
+}
+
+std::string choose_file(const char *kind, const char *extensions) {
     SDL_InitSubSystem(SDL_INIT_VIDEO);
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "King's Field",
-        "Choose your King's Field (Japan) disc image with the English patch applied "
-        "(.cue, .bin or .iso).\n\nThe game files are copied out of it once, into the "
-        "\"data\" folder beside the game. The image itself is not changed.", nullptr);
     struct Pick { std::string path; bool done = false; } pick;
-    static const SDL_DialogFileFilter filters[] = {{"Disc images", "cue;bin;iso"}};
+    const SDL_DialogFileFilter filters[] = {{kind, extensions}};
     SDL_ShowOpenFileDialog([](void *data, const char *const *files, int) {
         auto *result = static_cast<Pick *>(data);
         if (files && files[0])
@@ -107,37 +101,144 @@ std::string ask_for_disc() {
     return pick.path;
 }
 
-void show_error(const char *text) {
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "King's Field", text, nullptr);
+// Builds English from the Japanese files: `source` is a patch file, "download",
+// or empty to ask. Returns true when English is ready.
+bool add_english(const std::string &source) {
+    std::vector<u8> ppf;
+    std::string message;
+    bool ok;
+    if (source == "download") {
+        std::printf("Downloading the English patch from %s\n", kf::english_patch_url);
+        ok = kf::translation_download(&ppf, &message);
+    } else {
+        ok = kf::translation_read_patch(source.c_str(), &ppf, &message);
+    }
+    ok = ok && kf::languages_make_english(ppf, &message);
+    std::printf("%s\n", message.c_str());
+    return ok;
 }
 
-// Finds or creates the data folder. Returns false when the player cancelled or
-// extraction failed (already reported).
-bool prepare_release_data(const char *dropped_disc, std::string &data) {
-    const auto directory = executable_directory() / "data";
-    data = utf8(directory);
+void offer_english() {
+    for (;;) {
+        const int choice = ask(
+            "This is the original Japanese disc. King's Field Enhanced can add John Osborne's English "
+            "fan translation (v1.0) to it, keeping Japanese too.\n\n"
+            "Download the translator's patch from the Internet Archive (about 6 MB), or choose the patch "
+            "file (.rar or .ppf) if you have it. You can also do this later in F1 > Settings > Language.",
+            {"Download", "Choose file...", "Play in Japanese"});
+        std::string source;
+        if (choice == 0)
+            source = "download";
+        else if (choice == 1)
+            source = choose_file("English patch", "rar;ppf;zip;7z");
+        else
+            return;
+        if (source.empty())
+            continue;
+        std::vector<u8> ppf;
+        std::string message;
+        const bool ok = (source == "download" ? kf::translation_download(&ppf, &message)
+                                              : kf::translation_read_patch(source.c_str(), &ppf, &message)) &&
+            kf::languages_make_english(ppf, &message);
+        if (ok)
+            return;
+        show_error(message.c_str());
+    }
+}
+
+#if defined(_WIN32)
+// Release layout on Windows: game files are copied out of the player's disc
+// image once, into "data/ja" and "data/en" beside the executable.
+std::string disc_beside(const std::filesystem::path &directory) {
     std::error_code error;
-    if (std::filesystem::exists(directory / "GAME.EXE", error))
-        return true;
-    std::string disc = dropped_disc ? dropped_disc : disc_beside(executable_directory());
-    if (disc.empty())
+    std::string found;
+    for (const auto &entry : std::filesystem::directory_iterator(directory, error)) {
+        if (!entry.is_regular_file(error) || !is_disc_image(entry.path()))
+            continue;
+        if (lower_extension(entry.path()) == ".cue")
+            return utf8(entry.path());
+        if (found.empty())
+            found = utf8(entry.path());
+    }
+    return found;
+}
+
+std::string ask_for_disc() {
+    SDL_InitSubSystem(SDL_INIT_VIDEO);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "King's Field Enhanced",
+        "Choose your King's Field (Japan) disc image: the original, or with the English patch applied "
+        "(.cue, .bin or .iso).\n\nThe game files are copied out of it once, into the \"data\" folder "
+        "beside the game. The image itself is not changed.", nullptr);
+    return choose_file("Disc images", "cue;bin;iso");
+}
+
+// Earlier versions kept one language directly in "data".
+void move_single_language_data(const std::filesystem::path &library) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(library / "GAME.EXE", error))
+        return;
+    const auto language = kf::language_of_folder(utf8(library));
+    auto moving = library;
+    moving += ".moving";
+    std::filesystem::rename(library, moving, error);
+    if (!error)
+        std::filesystem::create_directory(library, error);
+    if (!error)
+        std::filesystem::rename(moving, library / kf::language_code(language), error);
+    if (error)
+        std::printf("Cannot move the game files into data/%s: %s\n", kf::language_code(language), error.message().c_str());
+}
+
+// Finds or creates the game files. Returns false when the player cancelled or
+// the disc could not be used (already reported).
+bool prepare_release_data(const char *dropped) {
+    const auto library = executable_directory() / "data";
+    move_single_language_data(library);
+    kf::languages_configure(utf8(library));
+    std::error_code error;
+    for (const char *suffix : {".partial", ".moving"}) {
+        auto stale = library / "ja";
+        stale += suffix;
+        std::filesystem::remove_all(stale, error);
+        stale = library / "en";
+        stale += suffix;
+        std::filesystem::remove_all(stale, error);
+    }
+    const bool any = kf::language_available(kf::Language::Japanese) || kf::language_available(kf::Language::English);
+    // A patch dropped onto the game adds English to the Japanese files.
+    if (dropped && is_patch_file(native_path(dropped))) {
+        if (!add_english(dropped))
+            show_error("That patch could not be applied. Details are in kf.log in %APPDATA%\\KingsField\\SLPS00017.");
+        dropped = nullptr;
+    }
+    std::string disc = dropped ? dropped : "";
+    if (!any && disc.empty())
+        disc = disc_beside(executable_directory());
+    if (!any && disc.empty())
         disc = ask_for_disc();
-    if (disc.empty())
+    if (!any && disc.empty())
         return false;
-    // A folder without GAME.EXE is a failed earlier extraction.
-    std::filesystem::remove_all(directory, error);
-    std::printf("Extracting game files from %s\n", disc.c_str());
-    if (!kf::disc_extract(disc.c_str(), data.c_str())) {
-        show_error("That disc image could not be read as King's Field (Japan, SLPS-00017).\n\n"
-                   "Use the original Japanese disc with the English patch applied, as a .cue/.bin pair "
-                   "or an .iso. Details are in kf.log in %APPDATA%\\KingsField\\SLPS00017.");
-        std::filesystem::remove_all(directory, error);
-        return false;
+    if (!disc.empty()) {
+        std::printf("Copying game files from %s\n", disc.c_str());
+        kf::Language added;
+        std::string message;
+        if (!kf::languages_add_disc(disc.c_str(), &added, &message)) {
+            std::printf("%s\n", message.c_str());
+            if (!any) {
+                show_error("That disc image could not be read as King's Field (Japan, SLPS-00017).\n\n"
+                           "Use the Japanese disc, original or with the English patch applied, as a .cue/.bin "
+                           "pair or an .iso. Details are in kf.log in %APPDATA%\\KingsField\\SLPS00017.");
+                return false;
+            }
+            show_error(message.c_str());
+        } else if (added == kf::Language::Japanese && !kf::language_available(kf::Language::English)) {
+            offer_english();
+        }
     }
     return true;
 }
-}
 #endif
+}
 
 extern "C" kf::AppMode kf_run_game();
 extern "C" void kf_run_opening(kf::AppMode mode);
@@ -146,18 +247,28 @@ int main(int argc, char **argv) {
 #if KF_EXT
     kf::ext::console_start();
 #endif
-    const char *data = "data";
+    const char *data = nullptr;
     const char *saves = nullptr;
     const char *disc = nullptr;
     const char *extracted = nullptr;
-    bool data_selected = false, extract_only = false;
+    const char *english_patch = nullptr;
+    std::vector<const char *> language_data;
+    bool extract_only = false;
     bool skip_intro = false;
-    const char *dropped_disc = nullptr;
+    bool language_selected = false;
+    kf::Language language = kf::Language::English;
+    const char *dropped = nullptr;
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--data") == 0 && i + 1 < argc) {
+        if (std::strcmp(argv[i], "--data") == 0 && i + 1 < argc)
             data = argv[++i];
-            data_selected = true;
+        else if ((std::strcmp(argv[i], "--data-ja") == 0 || std::strcmp(argv[i], "--data-en") == 0) && i + 1 < argc)
+            language_data.push_back(argv[++i]);
+        else if (std::strcmp(argv[i], "--language") == 0 && i + 1 < argc && kf::language_parse(argv[i + 1], &language)) {
+            language_selected = true;
+            ++i;
         }
+        else if (std::strcmp(argv[i], "--english-patch") == 0 && i + 1 < argc)
+            english_patch = argv[++i];
         else if (std::strcmp(argv[i], "--disc") == 0 && i + 1 < argc)
             disc = argv[++i];
         else if (std::strcmp(argv[i], "--extract-to") == 0 && i + 1 < argc)
@@ -169,27 +280,23 @@ int main(int argc, char **argv) {
         else if (std::strcmp(argv[i], "--skip-intro") == 0)
             skip_intro = true;
 #if defined(_WIN32)
-        // A disc image dropped onto the executable.
-        else if (!dropped_disc && argv[i][0] != '-' && is_disc_image(std::filesystem::path(reinterpret_cast<const char8_t *>(argv[i]))))
-            dropped_disc = argv[i];
+        // A disc image or the English patch dropped onto the executable.
+        else if (!dropped && argv[i][0] != '-' &&
+                 (is_disc_image(native_path(argv[i])) || is_patch_file(native_path(argv[i]))))
+            dropped = argv[i];
 #endif
         else {
-            std::fprintf(stderr, "Usage: kings-field [--data DIRECTORY | --disc IMAGE [--extract-to NEW_DIRECTORY] [--extract-only]] [--saves DIRECTORY] [--skip-intro]\n");
+            std::fprintf(stderr, "Usage: kings-field [--data DIRECTORY] [--data-ja DIRECTORY] [--data-en DIRECTORY] "
+                                 "[--language ja|en] [--english-patch FILE|download] "
+                                 "[--disc IMAGE [--extract-to NEW_DIRECTORY] [--extract-only]] [--saves DIRECTORY] [--skip-intro]\n");
             return 1;
         }
     }
+    const bool data_selected = data || !language_data.empty();
     if ((disc && data_selected) || (!disc && (extracted || extract_only))) {
         std::fprintf(stderr, "Use --data for existing files, or --disc with optional --extract-to/--extract-only.\n");
         return 1;
     }
-#if defined(_WIN32)
-    std::string release_data;
-    if (!disc && !data_selected) {
-        if (!prepare_release_data(dropped_disc, release_data))
-            return 1;
-        data = release_data.c_str();
-    }
-#endif
     if (disc) {
         data = extracted ? extracted : "data";
         if (!kf::disc_extract(disc, data))
@@ -197,15 +304,42 @@ int main(int argc, char **argv) {
         if (extract_only)
             return 0;
     }
-    if (!kf::data_files_set_root(data))
-        return 1;
-    if (english_patch_present()) {
-        kf::game::menu_glyphs::menu_glyphs_use_english();
-        std::printf("English patch detected: using translated menu labels\n");
+    // Explicit folders first; the library beside the game fills in the rest and
+    // receives languages added later.
+    if (data)
+        kf::languages_add_folder(data);
+    for (const char *folder : language_data)
+        kf::languages_add_folder(folder);
+#if defined(_WIN32)
+    if (!data_selected && !disc) {
+        if (!prepare_release_data(dropped))
+            return 1;
+    } else {
+        kf::languages_configure(utf8(executable_directory() / "data"));
     }
+#else
+    if (!data_selected && !disc)
+        kf::languages_add_folder("data");
+#endif
+    if (english_patch && !kf::language_available(kf::Language::English) && !add_english(english_patch))
+        return 1;
+    // Start in English when it is there; the saved preference may change it below.
+    std::string root = kf::languages_start(language_selected ? language : kf::Language::English);
+    if (root.empty() || !kf::data_files_set_root(root.c_str()))
+        return 1;
     // Create browser audio within the launch gesture, before asynchronous storage.
     if (!kf::host_start())
         return 1;
+    // Settings are loaded now: honour the player's language unless one was given.
+    if (!language_selected && kf::language_preference != kf::game_language() &&
+        kf::language_available(kf::language_preference)) {
+        kf::language_request(kf::language_preference);
+        kf::language_apply_pending();
+    }
+    if (kf::game_language() == kf::Language::English) {
+        kf::game::menu_glyphs::menu_glyphs_use_english();
+        std::printf("English game files: using translated menu labels\n");
+    }
     if (!kf::save_storage_start(saves))
         kf::host_fail("Cannot initialize save storage. Check browser storage permissions or the selected save directory.");
 #ifdef __EMSCRIPTEN__

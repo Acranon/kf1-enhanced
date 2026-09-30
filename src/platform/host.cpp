@@ -1,4 +1,5 @@
 #include <kf/platform/host.hpp>
+#include <kf/platform/languages.hpp>
 #include <kf/platform/saves.hpp>
 #include <kf/audio/sound.hpp>
 #include <kf/platform/input.hpp>
@@ -628,6 +629,15 @@ QuickRequest host_take_quick_request() {
     static int test_updates;
     if (test && std::strchr(test, '@') && ++test_updates == std::atoi(std::strchr(test, '@') + 1))
         return test[0] == 's' ? QuickRequest::Save : QuickRequest::Load;
+    // KF_TEST_LANGUAGE=ja|en@<update>: one scripted language change, as from F1.
+    static const char *test_language = std::getenv("KF_TEST_LANGUAGE");
+    static int language_updates;
+    Language language;
+    char code[3] = {};
+    if (test_language && std::strchr(test_language, '@') &&
+        ++language_updates == std::atoi(std::strchr(test_language, '@') + 1) &&
+        std::sscanf(test_language, "%2[a-z]", code) == 1 && language_parse(code, &language))
+        language_request(language);
     const u32 pressed = host.quick_pressed;
     host.quick_pressed = 0;
     if (pressed & action_bit(Action::quick_load))

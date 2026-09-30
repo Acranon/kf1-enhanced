@@ -166,7 +166,7 @@ static void menu_data_string(MenuDataReader *reader, MenuGlyphString *string)
     menu_data_glyphs(reader, &string->glyphs);
 }
 
-void item_load_database(void)
+void menu_resources_reload(void)
 {
     u8 *stat_data;
     std::size_t stat_size;
@@ -202,6 +202,12 @@ void item_load_database(void)
     // label, moved into that removed row in the native menu description.
     auto &save_layout = menu_window_layouts[kf_enum_encode<s32>(KF_MENU_WINDOW_SAVE)];
     save_layout.rows[KF_MENU_SAVE_RETURN_ROW].glyphs = save_layout.rows[stat_save_return_row].glyphs;
+    // Port addition: Configuration gets a language row where Return was, and
+    // Return moves down a row. menu_draw_window draws the row's text.
+    auto &config = menu_window_layouts[kf_enum_encode<s32>(KF_MENU_WINDOW_CONFIG)];
+    config.rows[KF_MENU_CONFIG_RETURN_ROW] = config.rows[KF_MENU_CONFIG_LANGUAGE_ROW];
+    config.rows[KF_MENU_CONFIG_RETURN_ROW].position.y += config.rows[1].position.y - config.rows[0].position.y;
+    config.rows[KF_MENU_CONFIG_LANGUAGE_ROW].glyphs.codes[0] = MENU_TEXT_END;
     for (auto &row : item_name_rows)
         menu_data_glyphs(&reader, &row);
     for (auto &row : magic_name_rows)
@@ -214,7 +220,11 @@ void item_load_database(void)
             price = menu_data_word(&reader);
 
     memory_release_last(memory_arena);
+}
 
+void item_load_database(void)
+{
+    menu_resources_reload();
     resource_file_index_item_models();
 }
 
