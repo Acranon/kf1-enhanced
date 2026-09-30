@@ -1,22 +1,23 @@
-#include <kf/game/menu_glyphs.h>
-#include <kf/lib/null.h>
-
-#include <kf/platform/input.hpp>
-#include <kf/game/menu.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/menu.h>
+#include <kf/game/menu_glyphs.h>
+#include <kf/game/menu_text.h>
+#include <kf/lib/null.h>
+#include <kf/platform/input.h>
+
+#include <array>
+
 static constexpr unsigned MENU_SELECTION_LIST_CAPACITY = 20;
 
 
 void menu_equip_select(KfEquipmentMenuCategory equipment_category)
 {
     KfMenuList ctx;
-    s16 labels[MENU_SELECTION_LIST_CAPACITY][MENU_GLYPHS_PER_ROW];
-    KfObjectId codes[MENU_SELECTION_LIST_CAPACITY];
-    s16 *name;
-    u8 *owned;
-    s32 i;
-    s32 j;
-    s32 k;
+    std::array<std::array<s16, MENU_GLYPHS_PER_ROW>, MENU_SELECTION_LIST_CAPACITY> labels;
+    std::array<KfObjectId, MENU_SELECTION_LIST_CAPACITY> item_ids;
+    s32 item_id;
+    s32 found;
     s32 start;
     s32 end;
     KfMenuConfirmState confirm = KF_MENU_CONFIRM_IDLE;
@@ -26,8 +27,12 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
 
     kf::host_wait_buttons_released();
 
-    owned = item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)];
+    auto &player_stock = item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)];
     switch (equipment_category) {
+    case KF_EQUIP_MENU_NONE:
+    case KF_EQUIP_MENU_MAGIC:
+        // No item range exists for these; magic has its own selector.
+        return;
     case KF_EQUIP_MENU_WEAPON:
         start = kf_enum_encode<u8>(KF_ITEM_SHORT_SWORD);
         end = kf_enum_encode<u8>(KF_ITEM_IRON_MASK);
@@ -58,43 +63,38 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
         break;
     }
 
-    k = 0;
-    for (i = start; i < end; i++) {
-        if (owned[i] != 0) {
-            name = item_name_rows[i].codes;
-            for (j = 0; j < MENU_GLYPHS_PER_ROW; j++)
-                labels[k][j] = name[j];
-            codes[k] = kf_enum_decode<KfObjectId>(i);
-            k++;
+    found = 0;
+    for (item_id = start; item_id < end; item_id++) {
+        if (player_stock[item_id] != 0) {
+            labels[found] = item_name_rows[item_id].codes;
+            item_ids[found] = kf_enum_decode<KfObjectId>(item_id);
+            found++;
         }
     }
-    labels[k][0] = menu_glyphs::unequip[0];
-    labels[k][1] = menu_glyphs::unequip[1];
-    labels[k][2] = menu_glyphs::unequip[2];
-    labels[k][3] = MENU_TEXT_END;
-    codes[k] = KF_OBJECT_NONE;
-    k++;
+    const auto unequip = menu_label(MenuLabel::Unequip);
+    labels[found] = unequip.codes;
+    item_ids[found] = KF_OBJECT_NONE;
+    found++;
 
     menu_list_init(&ctx, KF_MENU_WINDOW_EQUIPMENT, kf_enum_encode<s32>(equipment_category));
-    ctx.entry_count = k;
-    ctx.glyphs_per_entry = MENU_GLYPHS_PER_ROW;
-    ctx.glyph_rows = &labels[0][0];
-    ctx.quantities = NULL;
+    ctx.entry_count = found;
+    ctx.glyph_rows = labels;
+    ctx.quantities = {};
 
     if (ctx.entry_count != 0) {
-        if (menu_load_item_model(codes[ctx.selected_index]) != KF_RESOURCE_LOADED)
+        if (menu_load_item_model(item_ids[ctx.selected_index]) != KF_RESOURCE_LOADED)
             return;
     }
 
     menu_set_equipment_compare(equipment_category);
     for (;;) {
         if (confirm == KF_MENU_CONFIRM_REQUESTED) {
-            if (menu_list_interact(&ctx, KF_MENU_CONFIRM_EQUIP,
-                    KF_MENU_PREVIEW_ITEM_MODEL, codes[ctx.selected_index], KF_ITEM_STOCK_PLAYER, KF_TRADE_BUY)
+            if (menu_list_confirm(&ctx, KF_MENU_CONFIRM_EQUIP,
+                    KF_MENU_PREVIEW_ITEM_MODEL, item_ids[ctx.selected_index], KF_ITEM_STOCK_PLAYER, KF_TRADE_BUY)
                     == KF_MENU_RESULT_CANCELLED)
                 selection = kf_enum_encode<s32>(KF_MENU_RESULT_PENDING);
             else
-                selection = kf_enum_encode<u8>(codes[ctx.selected_index]);
+                selection = kf_enum_encode<u8>(item_ids[ctx.selected_index]);
         }
         confirm = KF_MENU_CONFIRM_IDLE;
         if (selection != kf_enum_encode<s32>(KF_MENU_RESULT_PENDING)) {
@@ -110,7 +110,7 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
                 selection = kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED);
             }
         } else if (menu_list_handle_navigation(ctx, input, prev)) {
-            if (menu_load_item_model(codes[ctx.selected_index]) != KF_RESOURCE_LOADED) {
+            if (menu_load_item_model(item_ids[ctx.selected_index]) != KF_RESOURCE_LOADED) {
                 menu_set_equipment_compare(KF_EQUIP_MENU_NONE);
                 return;
             }
@@ -124,7 +124,7 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
 
         menu_frame_begin();
         if (ctx.entry_count != 0)
-            menu_item_model_preview(codes[ctx.selected_index]);
+            menu_item_model_preview(item_ids[ctx.selected_index]);
         menu_list_render(&ctx);
         menu_present_frame();
     }
@@ -133,6 +133,10 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
     menu_release_item_model();
     if (selection != kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED)) {
         switch (equipment_category) {
+        case KF_EQUIP_MENU_NONE:
+        case KF_EQUIP_MENU_MAGIC:
+            // Excluded by the item-range selection above.
+            break;
         case KF_EQUIP_MENU_WEAPON:
             player_state.equipped_weapon_id = kf_enum_decode<KfObjectId>(selection);
             player_equip_weapon(kf_enum_decode<KfObjectId>(selection));
@@ -174,11 +178,10 @@ void menu_equip_select(KfEquipmentMenuCategory equipment_category)
 void menu_spell_select(void)
 {
     KfMenuList ctx;
-    s16 labels[MENU_SELECTION_LIST_CAPACITY][MENU_GLYPHS_PER_ROW];
-    KfEffectKind codes[MENU_SELECTION_LIST_CAPACITY];
-    s32 code;
-    s32 j;
-    s32 k;
+    std::array<std::array<s16, MENU_GLYPHS_PER_ROW>, MENU_SELECTION_LIST_CAPACITY> labels;
+    std::array<KfEffectKind, MENU_SELECTION_LIST_CAPACITY> magic_ids;
+    s32 magic_id;
+    s32 found;
     KfMenuConfirmState confirm = KF_MENU_CONFIRM_IDLE;
     s32 input = 0;
     s32 prev;
@@ -186,42 +189,38 @@ void menu_spell_select(void)
 
     kf::host_wait_buttons_released();
 
-    k = 0;
-    for (code = kf_enum_encode<s32>(KF_MAGIC_LIGHTNING_BOLT); code < KF_MAGIC_PLAYER_COUNT; code++) {
-        if (effect_state.magic.entries[code].learned == KF_MAGIC_LEARNED) {
-            for (j = 0; j < MENU_GLYPHS_PER_ROW; j++)
-                labels[k][j] = magic_name_rows[code].codes[j];
-            codes[k] = kf_enum_decode<KfEffectKind>(code);
-            k++;
+    found = 0;
+    for (magic_id = kf_enum_encode<s32>(KF_MAGIC_LIGHTNING_BOLT); magic_id < KF_MAGIC_PLAYER_COUNT; magic_id++) {
+        if (effect_state.magic.entries[magic_id].learned == KF_MAGIC_LEARNED) {
+            labels[found] = magic_name_rows[magic_id].codes;
+            magic_ids[found] = kf_enum_decode<KfEffectKind>(magic_id);
+            found++;
         }
     }
-    labels[k][0] = menu_glyphs::unequip[0];
-    labels[k][1] = menu_glyphs::unequip[1];
-    labels[k][2] = menu_glyphs::unequip[2];
-    labels[k][3] = MENU_TEXT_END;
-    codes[k] = KF_MAGIC_NONE;
-    k++;
+    const auto unequip = menu_label(MenuLabel::Unequip);
+    labels[found] = unequip.codes;
+    magic_ids[found] = KF_MAGIC_NONE;
+    found++;
 
     menu_list_init(&ctx, KF_MENU_WINDOW_EQUIPMENT, kf_enum_encode<s32>(KF_EQUIP_MENU_MAGIC));
-    ctx.entry_count = k;
-    ctx.glyphs_per_entry = MENU_GLYPHS_PER_ROW;
-    ctx.glyph_rows = &labels[0][0];
-    ctx.quantities = NULL;
+    ctx.entry_count = found;
+    ctx.glyph_rows = labels;
+    ctx.quantities = {};
 
     menu_frame_begin();
     if (ctx.entry_count != 0) {
-        if (menu_load_item_texture(menu_texture_from_magic(codes[ctx.selected_index])) == KF_RESOURCE_LOAD_FAILED)
+        if (menu_load_texture(menu_texture_from_magic(magic_ids[ctx.selected_index])) == KF_RESOURCE_LOAD_FAILED)
             return;
-        if (codes[ctx.selected_index] != KF_MAGIC_NONE)
-            menu_add_marker_quad();
+        if (magic_ids[ctx.selected_index] != KF_MAGIC_NONE)
+            menu_add_magic_artwork_quad();
     }
     menu_list_render(&ctx);
 
     for (;;) {
         menu_present_frame();
         if (confirm == KF_MENU_CONFIRM_REQUESTED) {
-            selection = kf_enum_encode<s32>(menu_list_interact(&ctx, KF_MENU_CONFIRM_EQUIP,
-                    KF_MENU_PREVIEW_MAGIC_ICON, codes[ctx.selected_index], KF_ITEM_STOCK_PLAYER, KF_TRADE_BUY));
+            selection = kf_enum_encode<s32>(menu_list_confirm(&ctx, KF_MENU_CONFIRM_EQUIP,
+                    magic_ids[ctx.selected_index]));
             if (selection == kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED))
                 selection = kf_enum_encode<s32>(KF_MENU_RESULT_PENDING);
             else
@@ -242,7 +241,7 @@ void menu_spell_select(void)
                 selection = kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED);
             }
         } else if (menu_list_handle_navigation(ctx, input, prev)) {
-            if (menu_load_item_texture(menu_texture_from_magic(codes[ctx.selected_index])) == KF_RESOURCE_LOAD_FAILED)
+            if (menu_load_texture(menu_texture_from_magic(magic_ids[ctx.selected_index])) == KF_RESOURCE_LOAD_FAILED)
                 return;
         } else if (kf::button_pressed(input, prev, kf::Button::Confirm)) {
             menu_play_input_sound(MENU_SOUND_CONFIRM);
@@ -253,14 +252,14 @@ void menu_spell_select(void)
         }
 
         if (ctx.entry_count != 0) {
-            if (codes[ctx.selected_index] != KF_MAGIC_NONE)
-                menu_add_marker_quad();
+            if (magic_ids[ctx.selected_index] != KF_MAGIC_NONE)
+                menu_add_magic_artwork_quad();
         }
         menu_list_render(&ctx);
     }
 
     if (selection != kf_enum_encode<s32>(KF_MENU_RESULT_CANCELLED)) {
-        player_state.selected_magic_id = codes[selection];
-        player_select_magic(codes[selection]);
+        player_state.selected_magic_id = magic_ids[selection];
+        player_select_magic(magic_ids[selection]);
     }
 }

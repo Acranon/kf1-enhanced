@@ -1,9 +1,8 @@
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
 #include <cassert>
 #include <array>
 
 // Compile the actual loader; replace only its file, graphics and audio services.
-namespace kf::game {
 #include "../src/game/resources.cpp"
 #include "../src/game/equipment.cpp"
 
@@ -13,7 +12,7 @@ constexpr std::size_t growth_offset = 0x1a7c;
 alignas(4) static std::array<u8, growth_offset + 600> common_data;
 static std::size_t file_size = common_data.size();
 KfMemoryArena memory_arena {};
-KfPlayerLevelGrowth player_level_growth_table[KF_PLAYER_LEVEL_GROWTH_COUNT];
+std::array<KfPlayerLevelGrowth, KF_PLAYER_LEVEL_GROWTH_COUNT> player_level_growth_table;
 static KfMapObjectDefinitionTable loaded_objects;
 static KfMagicTable loaded_magic;
 
@@ -33,13 +32,12 @@ void prepare_common_data()
     }
     assert(offset == common_data.size());
 }
-}
 
 void resource_file_load_allocated(KfMemoryArena &, u8 **destination, const char *path, std::size_t *size)
 {
     assert(std::strcmp(path, "COM/COM.DAT") == 0 || std::strcmp(path, "COM/MIX.TIM") == 0);
-    *destination = kf::game::common_data.data();
-    *size = kf::game::file_size;
+    *destination = common_data.data();
+    *size = file_size;
 }
 void tim_upload_images(const u8 *, std::size_t) {}
 void memory_release_last(KfMemoryArena &) {}
@@ -53,13 +51,12 @@ namespace kf {
 }
 
 static int scalar = 7;
-static int rows[2][3] = {{1, 2, 3}, {4, 5, 6}};
-struct State { int *pointer; int values[2]; };
-static State states[2] = {{&scalar, {8, 9}}, {&rows[1][2], {10, 11}}};
+static std::array<std::array<int, 3>, 2> rows = {{{1, 2, 3}, {4, 5, 6}}};
+struct State { int *pointer; std::array<int, 2> values; };
+static std::array<State, 2> states = {{{&scalar, {8, 9}}, {&rows[1][2], {10, 11}}}};
 
 int main(int argc, char **argv)
 {
-    using namespace kf::game;
     assert(argc == 2);
     prepare_common_data();
     if (std::strcmp(argv[1], "reset") == 0) {
@@ -103,7 +100,7 @@ int main(int argc, char **argv)
     assert(std::memcmp(&armor_records, common_data.data() + armor_offset, sizeof armor_records) == 0);
     assert(std::memcmp(&loaded_objects, common_data.data() + object_offset, sizeof loaded_objects) == 0);
     assert(std::memcmp(&loaded_magic, common_data.data() + 0x142c, sizeof loaded_magic) == 0);
-    assert(std::memcmp(player_level_growth_table, common_data.data() + growth_offset,
+    assert(std::memcmp(player_level_growth_table.data(), common_data.data() + growth_offset,
                        sizeof player_level_growth_table) == 0);
     return 0;
 }

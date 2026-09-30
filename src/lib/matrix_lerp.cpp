@@ -1,7 +1,7 @@
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
+#include <kf/lib/graphics.h>
 #include <kf/lib/math.h>
 #include <kf/lib/render_types.h>
-#include <kf/lib/graphics.h>
 
 void matrix_interpolate(
     const MATRIX *from,
@@ -9,17 +9,14 @@ void matrix_interpolate(
     MATRIX *output,
     s32 blend)
 {
-    const s16 *source = &from->m[0][0];
-    const s16 *target = &to->m[0][0];
-    s16 *destination = &output->m[0][0];
-    s16 count = KF_MATRIX_ROTATION_ELEMENTS - 1;
-
-    do {
-        u16 from_value = *source++;
-        u16 to_value = *target++;
-
-        *destination++ = from_value + ((((s16)to_value - (s16)from_value) * blend) >> KF_FIXED12_BITS);
-    } while (--count != -1);
+    for (std::size_t row = 0; row < output->m.size(); ++row) {
+        for (std::size_t column = 0; column < output->m[row].size(); ++column) {
+            const s16 from_value = from->m[row][column];
+            const s16 to_value = to->m[row][column];
+            output->m[row][column] = from_value
+                + (((to_value - from_value) * blend) >> KF_FIXED12_BITS);
+        }
+    }
 }
 
 void lighting_set_color_matrix(KfRenderState &view,
@@ -55,17 +52,17 @@ void color_lerp_cvector(
     output->b = (((to->b - from->b) * blend) >> KF_FIXED12_BITS) + from->b;
 }
 
-u16 color_lerp_rgb555(u16 color0, u16 color1, s32 blend)
+u16 color_lerp_rgb555(u16 from, u16 to, s32 blend)
 {
-    s32 r0 = color0 & KF_RGB555_CHANNEL_MASK;
-    s32 r1 = color1 & KF_RGB555_CHANNEL_MASK;
+    s32 r0 = from & KF_RGB555_CHANNEL_MASK;
+    s32 r1 = to & KF_RGB555_CHANNEL_MASK;
     s32 r = r0 + (((r1 - r0) * blend) >> KF_FIXED12_BITS);
-    s32 g0 = (color0 >> KF_RGB555_GREEN_SHIFT) & KF_RGB555_CHANNEL_MASK;
-    s32 g1 = (color1 >> KF_RGB555_GREEN_SHIFT) & KF_RGB555_CHANNEL_MASK;
+    s32 g0 = (from >> KF_RGB555_GREEN_SHIFT) & KF_RGB555_CHANNEL_MASK;
+    s32 g1 = (to >> KF_RGB555_GREEN_SHIFT) & KF_RGB555_CHANNEL_MASK;
     s32 g = g0 + (((g1 - g0) * blend) >> KF_FIXED12_BITS);
-    s32 b0 = (color0 >> KF_RGB555_BLUE_SHIFT) & KF_RGB555_CHANNEL_MASK;
-    s32 b1 = (color1 >> KF_RGB555_BLUE_SHIFT) & KF_RGB555_CHANNEL_MASK;
+    s32 b0 = (from >> KF_RGB555_BLUE_SHIFT) & KF_RGB555_CHANNEL_MASK;
+    s32 b1 = (to >> KF_RGB555_BLUE_SHIFT) & KF_RGB555_CHANNEL_MASK;
     s32 b = b0 + (((b1 - b0) * blend) >> KF_FIXED12_BITS);
 
-    return r | ((color0 & KF_RGB555_STP) | (b << KF_RGB555_BLUE_SHIFT) | (g << KF_RGB555_GREEN_SHIFT));
+    return r | ((from & KF_RGB555_STP) | (b << KF_RGB555_BLUE_SHIFT) | (g << KF_RGB555_GREEN_SHIFT));
 }

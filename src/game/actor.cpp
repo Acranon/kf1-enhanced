@@ -1,15 +1,17 @@
-#include <kf/lib/random.hpp>
-#include <kf/lib/null.h>
-#include <kf/lib/bool.h>
-
-#include <kf/game/effect.h>
-#include <kf/lib/map_data.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/actor.h>
 #include <kf/game/collision.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
+#include <kf/game/effect.h>
 #include <kf/game/game.h>
+#include <kf/lib/map_data.h>
+#include <kf/lib/null.h>
+#include <kf/lib/random.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 enum {
     ACTOR_SELECTION_ANGLE_TOLERANCE = 0x18e,
@@ -38,39 +40,39 @@ enum {
     ACTOR_SPAWNER_POPULATION_LIMIT = 2
 };
 
-KfActorActionProfile actor_action_profiles[KF_ACTOR_ACTION_PROFILE_COUNT] = {
-    {},
-    {},
-    {},
-    {},
-    {12000, 256, 5500, 768, 32},
-    {9000, 256, 4000, 768, 48},
-    {},
-    {9000, 256, 4000, 768, 48},
-    {9000, 256, 4000, 768, 48},
-    {10000, 256, 1000, 768, 32},
-    {6000, 64, 3000, 768, 48},
-    {20000, 64, 5000, 768, 48},
-    {6000, 64, 2000, 768, 48},
-    {9000, 256, 4000, 768, 48},
-    {},
-    {},
-    {},
-    {},
-    {},
-    {},
-    {20000, 256, 6000, 1024, 48},
-    {},
-    {9000, 256, 4000, 768, 48},
-    {12000, 256, 5500, 768, 32},
-    {20000, 256, 6000, 1024, 48},
+std::array<KfActorActionProfile, KF_ACTOR_ACTION_PROFILE_COUNT> actor_action_profiles = {
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{12000, 256, 5500, 768, 32},
+    KfActorActionProfile{9000, 256, 4000, 768, 48},
+    KfActorActionProfile{},
+    KfActorActionProfile{9000, 256, 4000, 768, 48},
+    KfActorActionProfile{9000, 256, 4000, 768, 48},
+    KfActorActionProfile{10000, 256, 1000, 768, 32},
+    KfActorActionProfile{6000, 64, 3000, 768, 48},
+    KfActorActionProfile{20000, 64, 5000, 768, 48},
+    KfActorActionProfile{6000, 64, 2000, 768, 48},
+    KfActorActionProfile{9000, 256, 4000, 768, 48},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{},
+    KfActorActionProfile{20000, 256, 6000, 1024, 48},
+    KfActorActionProfile{},
+    KfActorActionProfile{9000, 256, 4000, 768, 48},
+    KfActorActionProfile{12000, 256, 5500, 768, 32},
+    KfActorActionProfile{20000, 256, 6000, 1024, 48},
 };
 
-SoundRef boss_death_phase_sounds[KF_ACTOR_BOSS_DEATH_SOUND_COUNT] = {
-    {27, 1, 88},
-    {27, 2, 88},
-    {27, 3, 88},
-    {88, 88, 88},
+std::array<SoundRef, KF_ACTOR_BOSS_DEATH_SOUND_COUNT> boss_death_phase_sounds = {
+    SoundRef{27, 1, 88},
+    SoundRef{27, 2, 88},
+    SoundRef{27, 3, 88},
+    SoundRef{88, 88, 88},
 };
 
 SoundRef boss_death_loop_sound = {70, 0, 65};
@@ -138,7 +140,7 @@ void actor_set_rotation(
 void actor_initialize(KfActor *actor)
 {
     actor->lifecycle = KF_ACTOR_LIFECYCLE_ACTIVE;
-    actor->animation_id = KF_ANIMATION_CLIP_FIRST;
+    actor->animation_clip = KF_ANIMATION_CLIP_FIRST;
     actor->animation_phase = 0;
     actor->collision_state = KF_ACTOR_COLLISION_CLEAR;
     actor->vertical_velocity = 0;
@@ -242,9 +244,7 @@ s32 combat_calculate_damage_component(s32 base_power, s32 attack, s32 defense)
     }
     attack += base_power / COMBAT_BASE_POWER_WEIGHT_DIVISOR;
     difference = attack - defense;
-    if (difference < 0) {
-        difference = 0;
-    }
+    difference = std::max<s32>(difference, 0);
     if (defense == 0) {
         defense = 1;
     }
@@ -340,7 +340,7 @@ void actor_apply_damage(
 void actor_pool_apply_radial_damage(
     const VECTOR *origin,
     u32 radius,
-    u16 falloff,
+    u16 falloff_q12,
     u16 base_power,
     u16 component0,
     u16 component1,
@@ -377,8 +377,8 @@ void actor_pool_apply_radial_damage(
         if (distance == -1) {
             continue;
         }
-        if (falloff != KF_FIXED12_ONE) {
-            damage_scale = radial_damage_attenuated_scale(distance, radius, falloff, scale);
+        if (falloff_q12 != KF_FIXED12_ONE) {
+            damage_scale = radial_damage_attenuated_scale(distance, radius, falloff_q12, scale);
         } else {
             damage_scale = scale;
         }
@@ -506,7 +506,6 @@ s32 actor_distance_to_point(
     if (point_z < -max_distance || max_distance < point_z) {
         return -1;
     }
-    point_x >>= KF_LENGTH_SQUARE_DOWNSHIFT;
     if (point_y != KF_COLLISION_IGNORE_HEIGHT) {
         actor_height >>= 1;
         point_height >>= 1;
@@ -519,15 +518,14 @@ s32 actor_distance_to_point(
             return -1;
         }
     }
-    point_z >>= KF_LENGTH_SQUARE_DOWNSHIFT;
-    distance = kf::length_square_root(point_x * point_x + point_z * point_z) << KF_LENGTH_SQUARE_DOWNSHIFT;
+    distance = fixed_vector2_length(point_x, point_z);
     if (max_distance < distance) {
         return -1;
     }
     return distance;
 }
 
-s32 actor_pool_find_overlap(s32 x, s32 y, s32 z, s32 extra_radius, s32 point_height)
+s32 actor_pool_find_overlap(s32 point_x, s32 point_y, s32 point_z, s32 radius_padding, s32 point_height)
 {
     KfActorDefinition *definition;
 
@@ -548,10 +546,10 @@ s32 actor_pool_find_overlap(s32 x, s32 y, s32 z, s32 extra_radius, s32 point_hei
         definition = &actor_state.definitions.entries[actor->definition_id];
         if (actor_distance_to_point(
                 actor,
-                x,
-                y,
-                z,
-                definition->collision_radius + extra_radius,
+                point_x,
+                point_y,
+                point_z,
+                definition->collision_radius + radius_padding,
                 definition->collision_height,
                 point_height) != -1) {
             return index;
@@ -565,7 +563,7 @@ void actor_bind_current(KfActor *actor)
     s32 index;
 
     actor_state.current = actor;
-    index = actor ? actor - actor_state.actors : -1;
+    index = actor ? actor - actor_state.actors.data() : -1;
     actor_state.current_definition = actor ? &actor_state.definitions.entries[actor->definition_id] : nullptr;
     actor_state.current_index = index;
     actor_state.current_definition_id = actor ? actor->definition_id : 0;
@@ -573,33 +571,18 @@ void actor_bind_current(KfActor *actor)
 
 void actor_advance_animation_wrapped(KfActor *actor, s16 delta)
 {
-    if (delta < 0) {
-        actor->animation_step = -delta;
-    } else {
-        actor->animation_step = delta;
-    }
+    actor->animation_step = std::abs(delta);
     actor->animation_phase = (actor->animation_phase + delta) & KF_ACTOR_ANIMATION_PHASE_MAX;
 }
 
 void actor_advance_animation_clamped(KfActor *actor, s16 delta)
 {
-    s16 phase;
-
-    if (delta < 0) {
-        actor->animation_step = -delta;
-    } else {
-        actor->animation_step = delta;
-    }
-    phase = actor->animation_phase + delta;
-    actor->animation_phase = phase;
-    if (phase >= KF_ACTOR_ANIMATION_PHASE_PERIOD) {
-        actor->animation_phase = KF_ACTOR_ANIMATION_PHASE_MAX;
-    } else if (phase < 0) {
-        actor->animation_phase = 0;
-    }
+    actor->animation_step = std::abs(delta);
+    const s16 phase = actor->animation_phase + delta;
+    actor->animation_phase = std::clamp<s32>(phase, 0, KF_ACTOR_ANIMATION_PHASE_MAX);
 }
 
-KfBool32 actor_animation_crossed_phase(const KfActor *actor, u16 phase)
+bool actor_animation_crossed_phase(const KfActor *actor, u16 phase)
 {
     return phase < actor->animation_phase
         && phase >= actor->animation_phase - actor->animation_step;
@@ -700,7 +683,7 @@ KfActorAction actor_try_select_ground_action(KfActorAction action, s32 distance,
     return KF_ACTOR_ACTION_NONE;
 }
 
-KfActorAction actor_try_select_facing_action(KfActorAction action, s32 distance, u16 chance)
+KfActorAction actor_try_select_multi_hit_action(KfActorAction action, s32 distance, u16 chance)
 {
     KfActor *actor = actor_state.current;
     u16 odds = chance;
@@ -762,7 +745,7 @@ KfActorAction actor_try_select_profiled_action(KfActorAction action, s32 distanc
         return KF_ACTOR_ACTION_NONE;
     }
     if (profile == KF_EFFECT_KIND_ACTOR_SPAWNER) {
-        candidate = actor_state.actors;
+        candidate = actor_state.actors.data();
         count = 0;
         index = KF_ACTOR_CAPACITY - 1;
         do {
@@ -772,7 +755,7 @@ KfActorAction actor_try_select_profiled_action(KfActorAction action, s32 distanc
             }
             candidate++;
         } while (--index != -1);
-        record = effect_state.records;
+        record = effect_state.records.data();
         index = KF_EFFECT_CAPACITY - 1;
         do {
             if (record->type != KF_EFFECT_SLOT_FREE

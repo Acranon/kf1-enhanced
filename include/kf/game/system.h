@@ -5,4 +5,4 @@ extern void frame_pacer_wait(void);
 extern void game_main_loop(void);
 extern void game_shutdown(void);
 
-#endif
+#endif // KF_GAME_SYSTEM_H

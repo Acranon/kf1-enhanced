@@ -1,11 +1,14 @@
 #ifndef KF_RESOURCES_H
 #define KF_RESOURCES_H
 
-#include <kf/lib/types.h>
-#include <kf/platform/host.hpp>
 #include <kf/lib/geometry_types.h>
-#include <type_traits>
+#include <kf/lib/map_types.h>
+#include <kf/lib/types.h>
+#include <kf/platform/host.h>
+
+#include <array>
 #include <cstdio>
+#include <type_traits>
 
 enum {
     KF_RESOURCE_CHUNK_HEADER_BYTES = 4,
@@ -22,16 +25,16 @@ inline const T *resource_chunk_data(const KfResourceChunk &chunk,
                                     const char *name = "resource record")
 {
     static_assert(std::is_trivially_copyable_v<T>);
-    char message[256];
+    std::array<char, 256> message;
     if (chunk.size < sizeof(T)) {
-        std::snprintf(message, sizeof message, "Truncated %s: need %zu bytes, have %zu.",
+        std::snprintf(message.data(), message.size(), "Truncated %s: need %zu bytes, have %zu.",
                       name, sizeof(T), chunk.size);
-        kf::host_fail(message);
+        kf::host_fail(message.data());
     }
     if (reinterpret_cast<std::uintptr_t>(chunk.data) % alignof(T)) {
-        std::snprintf(message, sizeof message, "Unaligned %s: requires %zu-byte alignment.",
+        std::snprintf(message.data(), message.size(), "Unaligned %s: requires %zu-byte alignment.",
                       name, alignof(T));
-        kf::host_fail(message);
+        kf::host_fail(message.data());
     }
     return reinterpret_cast<const T *>(chunk.data);
 }
@@ -63,7 +66,8 @@ inline u8 *resource_stream_next(u8 *chunk, const u8 *end)
 
 extern void tim_upload_images(const u8 *tim_data, std::size_t size);
 
-extern const u32 *resource_stream_copy_words(
-    u32 *destination, const u32 *source, std::size_t word_count);
+void map_grids_load(KfResourceChunk chunk, KfMapAttributeGrid &attributes,
+    KfMapGrid &heights, KfMapOrientationGrid &orientations,
+    KfMapGrid &flags, KfMapCollisionGrid &collision);
 
-#endif
+#endif // KF_RESOURCES_H

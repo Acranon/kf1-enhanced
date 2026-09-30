@@ -1,23 +1,25 @@
-#include <kf/game/graphics.h>
-
-#include <kf/game/render.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/render.h>
+
+#include <array>
 
 typedef struct {
-    u8 v[KF_QUAD_TEX_DESCRIPTOR_BYTES];
+    std::array<u8, KF_QUAD_TEX_DESCRIPTOR_BYTES> v;
 } FadeUv;
 
 KfScreenRect fade_screen_rect = {
     KF_TRANSITION_RECT_X, 0, KF_TRANSITION_RECT_WIDTH, KF_TRANSITION_RECT_HEIGHT
 };
 
-FadeUv fade_screen_uv = {{
+FadeUv fade_screen_uv = {
     0, 0, 0, 0, KF_TRANSITION_RECT_WIDTH, 0, KF_TRANSITION_RECT_HEIGHT, 0
-}};
+};
 
 CVECTOR fade_screen_color = {0, 0, 0, 0};
 
-char fade_screen_path[7] = "B0/L0.";
+std::array<char, 7> fade_screen_path = {"B0/L0."};
 
 void display_play_transition(void)
 {
@@ -32,7 +34,7 @@ void display_play_transition(void)
 
     std::size_t image_size;
     if (resource_file_load_into(game_graphics_runtime.display_state.asset_load_buffer,
-            game_graphics_runtime.display_state.asset_load_capacity, fade_screen_path, &image_size) != KF_RESOURCE_LOADED) {
+            game_graphics_runtime.display_state.asset_load_capacity, fade_screen_path.data(), &image_size) != KF_RESOURCE_LOADED) {
         return;
     }
     tim_upload_images(game_graphics_runtime.display_state.asset_load_buffer, image_size);

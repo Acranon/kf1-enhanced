@@ -2,17 +2,22 @@
 #define KF_LIB_MAP_H
 
 #include <kf/lib/animation.h>
-#include <kf/lib/types.h>
+#include <kf/lib/enum.h>
+#include <kf/lib/floor.h>
+#include <kf/lib/geometry_types.h>
+#include <kf/lib/item.h>
 #include <kf/lib/map_data.h>
 #include <kf/lib/map_object_types.h>
-#include <kf/lib/item.h>
-#include <kf/lib/floor.h>
-#include <kf/lib/enum.h>
-#include <kf/lib/notify_types.h>
-#include <kf/lib/geometry_types.h>
 #include <kf/lib/math.h>
+#include <kf/lib/notify_types.h>
+#include <kf/lib/types.h>
 
-struct KfPoolRecord;
+#include <array>
+#include <span>
+
+struct KfAnimationCacheRecord;
+struct KfCollisionResult;
+struct KfResourceChunk;
 
 enum {
     MAP_INTERACTION_PROBE_DISTANCE = 1000,
@@ -69,11 +74,11 @@ typedef union KfMapFloorScript {
 
 typedef struct KfMapSavedFloor {
     KfMapFloorScript script;
-    u8 records[KF_MAP_SAVED_RECORD_BYTES];
+    std::array<u8, KF_MAP_SAVED_RECORD_BYTES> records;
 } KfMapSavedFloor;
 
 typedef struct KfMapSavedWorld {
-    KfMapSavedFloor floors[KF_MAP_SAVED_FLOOR_COUNT];
+    std::array<KfMapSavedFloor, KF_MAP_SAVED_FLOOR_COUNT> floors;
 } KfMapSavedWorld;
 
 enum {
@@ -196,24 +201,12 @@ typedef union KfMapObjectLink {
     u32 words[2];
 } KfMapObjectLink;
 
-typedef struct KfMapObjectPlacement {
-    u8 object_id;
-    u8 unknown_01;
-    u8 tile_z;
-    u8 tile_x;
-    u16 yaw;
-    s16 local_z;
-    s16 local_x;
-    s16 local_y;
-    KfMapObjectLink link;
-} KfMapObjectPlacement;
-
 typedef struct KfMapObject {
     KfObjectId object_id;
     u8 unknown_01;
     u16 cell_x;
     u16 cell_z;
-    u8 unknown_06[2];
+    std::array<u8, 2> unknown_06;
     VECTOR position;
     KfRotation rotation;
     KfMapObjectLink link;
@@ -267,24 +260,6 @@ typedef struct KfDialoguePageLimits {
     u8 last_page[KF_DIALOGUE_STAGE_COUNT];
 } KfDialoguePageLimits;
 
-typedef struct KfMapEventDefinition {
-    KfMapEventState state;
-    KfCharacterId character_id;
-    u8 model_index;
-    u8 cell_z;
-    u8 cell_x;
-    KfDialoguePageLimits dialogue_pages;
-    u8 dialogue_stage_limit;
-    u8 unknown_0b;
-    u8 unknown_0c;
-    KfMapEventBehavior behavior;
-    s16 position_z_offset;
-    s16 position_x_offset;
-    u16 initial_rotation;
-    u16 radius;
-    u16 unknown_16;
-} KfMapEventDefinition;
-
 typedef struct KfDialogueState {
     u8 stage_limit;
     u8 stage;
@@ -305,30 +280,30 @@ typedef struct KfMapEvent {
     KfMapEventCollisionTurn collision_turn_pending;
     u8 unknown_11;
     u16 animation_phase;
-    s32 position_x;
-    s32 position_z;
+    s32 home_x;
+    s32 home_z;
     u16 cell_x;
     u16 cell_z;
     u16 radius;
     u16 unknown_22;
     VECTOR reference_position;
     SVECTOR rotation;
-    struct KfPoolRecord *animation_cache;
+    struct KfAnimationCacheRecord *animation_cache;
     s16 rotation_target;
     u16 unknown_42;
 } KfMapEvent;
 
 typedef struct KfMapObjectState {
     KfMapObjectDefinitionTable definitions;
-    KfMapObject objects[KF_MAP_OBJECT_CAPACITY];
-    u8 unknown_25a8[10];
-    u16 effect_sequence_160;
-    u16 effect_sequence_170;
-    u16 effect_sequence_180;
+    std::array<KfMapObject, KF_MAP_OBJECT_CAPACITY> objects;
+    std::array<u8, 10> unknown_25a8;
+    u16 gold_drop_sequence;
+    u16 definition_drop_sequence;
+    u16 placement_drop_sequence;
 } KfMapObjectState;
 
 typedef struct KfMapRuntimeState {
-    KfMapEvent events[KF_MAP_EVENT_CAPACITY];
+    std::array<KfMapEvent, KF_MAP_EVENT_CAPACITY> events;
     KfMapEvent *current_event;
     u8 *variant_asset_buffer;
     u16 dialogue_advance_gate;
@@ -336,7 +311,7 @@ typedef struct KfMapRuntimeState {
     KfMapSavedWorld world_state;
 } KfMapRuntimeState;
 
-extern KfMapCopyRegion map_copy_regions[KF_MAP_COPY_REGION_COUNT];
+extern std::array<KfMapCopyRegion, KF_MAP_COPY_REGION_COUNT> map_copy_regions;
 extern KfMapRuntimeState map_runtime_state;
 
 inline KfMapFloorScript &map_floor_script(KfFloorId floor)
@@ -345,9 +320,9 @@ inline KfMapFloorScript &map_floor_script(KfFloorId floor)
 }
 
 extern KfMapObjectState map_object_state;
-extern char map_resource_path[KF_MAP_RESOURCE_PATH_BYTES];
+extern std::array<char, KF_MAP_RESOURCE_PATH_BYTES> map_resource_path;
 
-extern void camera_path_begin(KfCameraPathState *path, const KfCameraPathPoint *points);
+extern void camera_path_begin(KfCameraPathState *path, std::span<const KfCameraPathPoint> points);
 extern void camera_path_compute_segment(KfCameraPathState *path);
 extern void camera_path_step(KfCameraPathState *path, s32 y_offset);
 extern void map_apply_copy_region(KfMapCopyRegionId region_id);
@@ -365,7 +340,7 @@ extern void map_event_advance_animation_blocking(KfMapEvent *event, u16 target, 
 extern s32 map_event_distance_to_point( const KfMapEvent *event, s32 point_x, s32 point_z, s32 max_distance);
 extern s32 map_event_pool_find_overlap(s32 point_x, s32 point_z, s32 radius_padding);
 extern KfMapEvent *map_event_pool_find_target_in_cone( const VECTOR *origin, s16 facing, s32 max_distance, s32 angle_tolerance, s32 *distance_out);
-extern void map_event_pool_load(const KfMapEventDefinition *definitions);
+extern void map_event_pool_load(KfResourceChunk placements);
 extern void map_event_pool_update(void);
 extern void map_event_refresh_dialogue_stage(KfMapEvent *event);
 extern void map_event_set_current(KfMapEvent *event);
@@ -383,12 +358,12 @@ extern void map_object_pool_clear_link(u8 link_id);
 extern s32 map_object_pool_find_interaction_from(
     s32 start_index, s32 point_x, s32 point_z, s32 radius_padding);
 extern s32 map_object_pool_find_near_point(s32 point_x, s32 point_z, s32 radius_padding);
-extern void map_object_pool_load(const KfMapObjectPlacement *placements);
+extern void map_object_pool_load(KfResourceChunk placements);
 extern void map_object_pool_trigger_link(u8 link_id);
 extern void map_object_pool_update(void);
-extern s32 map_object_probe_forward(const KfMapObject *object, u16 yaw);
-extern void map_object_spawn_actor_debris(u16 source, const VECTOR *position, s32 y_offset);
-extern void map_object_spawn_effect(KfMapObjectDropSource drop_source, KfObjectId object_id, const VECTOR *position, s32 y_offset);
+extern KfCollisionResult map_object_probe_door_closing(const KfMapObject *object, u16 yaw);
+extern void map_object_spawn_gold_drop(u16 gold_amount, const VECTOR *position, s32 y_offset);
+extern void map_object_spawn_drop(KfMapObjectDropSource drop_source, KfObjectId object_id, const VECTOR *position, s32 y_offset);
 extern void map_object_start_action_if_idle(KfMapObject *object, KfMapObjectOperation action);
 
 extern u8 *map_resource_load_file(const char *filename, std::size_t *loaded_size = nullptr);
@@ -400,4 +375,4 @@ extern void map_world_state_persist(void);
 extern bool map_saved_link_valid(KfMapObjectOperation operation, const KfMapObjectLink &link);
 extern s32 map_floor1_cross_index(void);
 
-#endif
+#endif // KF_LIB_MAP_H

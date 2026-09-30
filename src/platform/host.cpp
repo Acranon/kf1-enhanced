@@ -1,32 +1,38 @@
-#include <kf/platform/host.hpp>
-#include <kf/platform/languages.hpp>
-#include <kf/platform/saves.hpp>
-#include <kf/audio/sound.hpp>
-#include <kf/platform/input.hpp>
-#include <kf/platform/controls.hpp>
-#include <kf/renderer/renderer.hpp>
-#include <kf/renderer/projection.hpp>
-#include <kf/lib/fixed_math.hpp>
+#include <kf/platform/host.h>
+#include <kf/platform/language_runtime.h>
+#include <kf/platform/saves.h>
+#include <kf/audio/sound.h>
+#include <kf/platform/input.h>
+#include <kf/platform/controls.h>
+#include <kf/renderer/renderer.h>
+#include <kf/renderer/projection.h>
+#include <kf/lib/fixed_math.h>
 #include <SDL3/SDL.h>
 #if KF_EXT
-#include <kf/ext/ext.hpp>
+#include <kf/ext/ext.h>
 #include <GLES3/gl3.h>
 #endif
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <new>
 #include <vector>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
+
 EM_JS(void, host_browser_status, (const char *message), {
     document.getElementById('status').textContent = UTF8ToString(message);
 });
 EM_JS(int, host_browser_mouse_captured, (), {
     return document.pointerLockElement === Module.canvas;
+});
+EM_JS(void, host_browser_language, (const char *current, const char *requested, const char *message), {
+    Module['languageChanged'](UTF8ToString(current), UTF8ToString(requested), UTF8ToString(message));
 });
 #endif
 
@@ -36,11 +42,10 @@ struct HostState {
     SDL_GLContext context;
     SDL_Gamepad *gamepad;
     Renderer renderer;
-    DrawFace *frame_faces;
-    std::size_t frame_count, frame_capacity;
+    std::vector<DrawFace> frame_faces;
     InputState input;
     InputContext input_context;
-    SDL_Keycode pressed_keys[SDL_SCANCODE_COUNT];
+    std::array<SDL_Keycode, SDL_SCANCODE_COUNT> pressed_keys;
     Uint64 epoch, paused_ns, pause_start;
     double look_remainder_x, look_remainder_y;
     bool focused, mouse_captured, resume_mouse_capture;
@@ -67,7 +72,6 @@ static constexpr Uint64 maximum_wait_slice_ns = 8 * ns_per_millisecond;
 static constexpr u32 gamepad_axis_control_first = 100;
 static constexpr u32 gamepad_axis_positive_first = gamepad_axis_control_first + 1;
 static constexpr int gamepad_axis_deadzone = 16000;
-static constexpr std::size_t initial_face_capacity = 512;
 static constexpr std::size_t renderer_error_capacity = 2048;
 static constexpr double mouse_degrees_per_pixel = 0.12;
 static constexpr double angle_units_per_turn = 4096;
@@ -100,32 +104,34 @@ static void platform_yield(Uint64 nanoseconds) {
 
 static void bind_inputs() {
     auto *input = &host.input;
-    const struct { SDL_Keycode code; Action action; } keys[] = {
-        {SDLK_W, Action::forward}, {SDLK_UP, Action::forward},
-        {SDLK_S, Action::backward}, {SDLK_DOWN, Action::backward},
-        {SDLK_A, Action::strafe_left}, {SDLK_D, Action::strafe_right},
-        {SDLK_LEFT, Action::turn_left}, {SDLK_RIGHT, Action::turn_right},
-        {SDLK_PAGEUP, Action::look_up}, {SDLK_PAGEDOWN, Action::look_down},
-        {SDLK_E, Action::interact}, {SDLK_RETURN, Action::confirm},
-        {SDLK_SPACE, Action::attack}, {SDLK_Q, Action::magic},
-        {SDLK_TAB, Action::inventory}, {SDLK_BACKSPACE, Action::back},
-        {SDLK_ESCAPE, Action::pause_or_back}, {SDLK_P, Action::pause},
-        {SDLK_LSHIFT, Action::run}, {SDLK_RSHIFT, Action::run},
-        {SDLK_F2, Action::quick_save}, {SDLK_F4, Action::quick_load}
+    struct KeyBinding { SDL_Keycode code; Action action; };
+    constexpr std::array<KeyBinding, 22> keys = {
+        KeyBinding{SDLK_W, Action::forward}, KeyBinding{SDLK_UP, Action::forward},
+        KeyBinding{SDLK_S, Action::backward}, KeyBinding{SDLK_DOWN, Action::backward},
+        KeyBinding{SDLK_A, Action::strafe_left}, KeyBinding{SDLK_D, Action::strafe_right},
+        KeyBinding{SDLK_LEFT, Action::turn_left}, KeyBinding{SDLK_RIGHT, Action::turn_right},
+        KeyBinding{SDLK_PAGEUP, Action::look_up}, KeyBinding{SDLK_PAGEDOWN, Action::look_down},
+        KeyBinding{SDLK_E, Action::interact}, KeyBinding{SDLK_RETURN, Action::confirm},
+        KeyBinding{SDLK_SPACE, Action::attack}, KeyBinding{SDLK_Q, Action::magic},
+        KeyBinding{SDLK_TAB, Action::inventory}, KeyBinding{SDLK_BACKSPACE, Action::back},
+        KeyBinding{SDLK_ESCAPE, Action::pause_or_back}, KeyBinding{SDLK_P, Action::pause},
+        KeyBinding{SDLK_LSHIFT, Action::run}, KeyBinding{SDLK_RSHIFT, Action::run},
+        KeyBinding{SDLK_F2, Action::quick_save}, KeyBinding{SDLK_F4, Action::quick_load}
     };
     for (const auto &key : keys)
         input_bind(input, {InputDevice::keyboard, static_cast<u32>(key.code)}, key.action);
     input_bind(input, {InputDevice::mouse, SDL_BUTTON_LEFT}, Action::attack);
     input_bind(input, {InputDevice::mouse, SDL_BUTTON_RIGHT}, Action::magic);
-    const struct { SDL_GamepadButton code; Action action; } buttons[] = {
-        {SDL_GAMEPAD_BUTTON_DPAD_UP, Action::forward}, {SDL_GAMEPAD_BUTTON_DPAD_DOWN, Action::backward},
-        {SDL_GAMEPAD_BUTTON_DPAD_LEFT, Action::turn_left}, {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, Action::turn_right},
-        {SDL_GAMEPAD_BUTTON_NORTH, Action::attack}, {SDL_GAMEPAD_BUTTON_WEST, Action::magic},
-        {SDL_GAMEPAD_BUTTON_EAST, Action::interact}, {SDL_GAMEPAD_BUTTON_SOUTH, Action::back},
-        {SDL_GAMEPAD_BUTTON_START, Action::inventory}, {SDL_GAMEPAD_BUTTON_BACK, Action::pause},
-        {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, Action::strafe_left},
-        {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, Action::strafe_right},
-        {SDL_GAMEPAD_BUTTON_LEFT_STICK, Action::run}
+    struct ButtonBinding { SDL_GamepadButton code; Action action; };
+    constexpr std::array<ButtonBinding, 13> buttons = {
+        ButtonBinding{SDL_GAMEPAD_BUTTON_DPAD_UP, Action::forward}, ButtonBinding{SDL_GAMEPAD_BUTTON_DPAD_DOWN, Action::backward},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_DPAD_LEFT, Action::turn_left}, ButtonBinding{SDL_GAMEPAD_BUTTON_DPAD_RIGHT, Action::turn_right},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_NORTH, Action::attack}, ButtonBinding{SDL_GAMEPAD_BUTTON_WEST, Action::magic},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_EAST, Action::interact}, ButtonBinding{SDL_GAMEPAD_BUTTON_SOUTH, Action::back},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_START, Action::inventory}, ButtonBinding{SDL_GAMEPAD_BUTTON_BACK, Action::pause},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, Action::strafe_left},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, Action::strafe_right},
+        ButtonBinding{SDL_GAMEPAD_BUTTON_LEFT_STICK, Action::run}
     };
     for (const auto &button : buttons)
         input_bind(input, {InputDevice::gamepad, static_cast<u32>(button.code)}, button.action);
@@ -164,9 +170,9 @@ bool host_start() {
     }
     // All frame pacing uses the absolute clock below, not a second swap-interval wait.
     SDL_GL_SetSwapInterval(0);
-    char error[renderer_error_capacity] {};
-    if (!renderer_init(&host.renderer, error, sizeof error)) {
-        std::fprintf(stderr, "%s\n", error);
+    std::array<char, renderer_error_capacity> error{};
+    if (!renderer_init(&host.renderer, error.data(), error.size())) {
+        std::fprintf(stderr, "%s\n", error.data());
         host_shutdown();
         return false;
     }
@@ -188,9 +194,9 @@ void host_shutdown() {
 #if KF_EXT
     ext::shutdown();
 #endif
+    language_resources_stop();
     sound_shutdown();
     save_storage_shutdown();
-    std::free(host.frame_faces);
     if (host.gamepad)
         SDL_CloseGamepad(host.gamepad);
     if (host.context) {
@@ -201,6 +207,14 @@ void host_shutdown() {
         SDL_DestroyWindow(host.window);
     host = {};
     SDL_Quit();
+}
+
+void host_language_status(const char *message) {
+    std::printf("%s (%s)\n", message, language_name(game_language()));
+    std::fflush(stdout);
+#ifdef __EMSCRIPTEN__
+    host_browser_language(language_code(game_language()), language_code(language_requested()), message);
+#endif
 }
 
 [[noreturn]] void host_fail(const char *message) {
@@ -337,7 +351,7 @@ static void process_event(const SDL_Event &event) {
             host.focused = false;
             host.resume_mouse_capture = false;
             input_clear(&host.input);
-            std::fill_n(host.pressed_keys, SDL_SCANCODE_COUNT, SDLK_UNKNOWN);
+            host.pressed_keys.fill(SDLK_UNKNOWN);
             host.look_remainder_x = host.look_remainder_y = 0;
             SDL_SetWindowRelativeMouseMode(host.window, false);
         }
@@ -435,7 +449,7 @@ static void sync_overlay_input() {
     if (open != host.overlay_was_open) {
         host.overlay_was_open = open;
         input_clear(&host.input);
-        std::fill_n(host.pressed_keys, SDL_SCANCODE_COUNT, SDLK_UNKNOWN);
+        host.pressed_keys.fill(SDLK_UNKNOWN);
         host.look_remainder_x = host.look_remainder_y = 0;
     }
     const bool cursor = ext::wants_cursor();
@@ -594,14 +608,15 @@ u32 host_read_buttons() {
     if (host.input_context == InputContext::Opening)
         host.opening_load_pressed |= (host.input.pending.pressed & action_bit(Action::quick_load)) != 0;
     host.input.pending.pressed = host.input.pending.released = 0;
-    const struct { Action action; Button button; } mapping[] = {
-        {Action::forward, Button::Up}, {Action::backward, Button::Down},
-        {Action::turn_left, Button::Left}, {Action::turn_right, Button::Right},
-        {Action::strafe_left, Button::StrafeLeft}, {Action::strafe_right, Button::StrafeRight},
-        {Action::look_up, Button::LookUp}, {Action::look_down, Button::LookDown},
-        {Action::attack, Button::Attack}, {Action::magic, Button::Magic},
-        {Action::interact, Button::Confirm}, {Action::confirm, Button::Confirm},
-        {Action::back, Button::Back}, {Action::pause, Button::Select}
+    struct ButtonAction { Action action; Button button; };
+    constexpr std::array<ButtonAction, 14> mapping = {
+        ButtonAction{Action::forward, Button::Up}, ButtonAction{Action::backward, Button::Down},
+        ButtonAction{Action::turn_left, Button::Left}, ButtonAction{Action::turn_right, Button::Right},
+        ButtonAction{Action::strafe_left, Button::StrafeLeft}, ButtonAction{Action::strafe_right, Button::StrafeRight},
+        ButtonAction{Action::look_up, Button::LookUp}, ButtonAction{Action::look_down, Button::LookDown},
+        ButtonAction{Action::attack, Button::Attack}, ButtonAction{Action::magic, Button::Magic},
+        ButtonAction{Action::interact, Button::Confirm}, ButtonAction{Action::confirm, Button::Confirm},
+        ButtonAction{Action::back, Button::Back}, ButtonAction{Action::pause, Button::Select}
     };
     u32 buttons = 0;
     for (const auto &entry : mapping)
@@ -726,7 +741,7 @@ void host_show_message(const char *text) {
 }
 
 void host_begin_frame() {
-    host.frame_count = 0;
+    host.frame_faces.clear();
     host.frame_light_count = 0;
     host.frame_poses.clear();
     render_entity_tag = 0;
@@ -738,24 +753,20 @@ void host_report_entity(u16 tag, s32 x, s32 y, s32 z, s32 yaw, int yaw_sign) {
 }
 
 void host_enqueue_face(const DrawFace &face) {
-    if (host.frame_count == host.frame_capacity) {
-        if (host.frame_capacity > std::numeric_limits<std::size_t>::max() / 2 / sizeof(DrawFace))
-            host_fail("Render command allocation is too large.");
-        const auto capacity = host.frame_capacity ? host.frame_capacity * 2 : initial_face_capacity;
-        auto *faces = static_cast<DrawFace *>(std::realloc(host.frame_faces, capacity * sizeof(DrawFace)));
-        if (!faces)
-            host_fail("Cannot allocate render commands.");
-        host.frame_faces = faces;
-        host.frame_capacity = capacity;
-    }
+    if (host.frame_faces.size() == host.frame_faces.max_size())
+        host_fail("Render command allocation is too large.");
     // Animated instances reuse the same projection/morph scratch storage. No
     // pointer into that storage survives this submission.
-    host.frame_faces[host.frame_count] = face;
-    host.frame_faces[host.frame_count++].entity = render_entity_tag;
+    try {
+        host.frame_faces.push_back(face);
+        host.frame_faces.back().entity = render_entity_tag;
+    } catch (const std::bad_alloc &) {
+        host_fail("Cannot allocate render commands.");
+    }
 }
 
 void host_present_frame(const FrameStyle &style) {
-    const FaceList faces{host.frame_faces, host.frame_count, style};
+    const FaceList faces{host.frame_faces.data(), host.frame_faces.size(), style};
     host_present_faces(&faces);
 }
 
@@ -1100,7 +1111,7 @@ void smooth_present(Uint64 now) {
 
 // Takes ownership of a finished world frame; returns false if it is not one.
 bool smooth_take_frame(const FaceList *faces) {
-    if (!smoothing_applies() || !smooth.frame_has_camera || faces->faces != host.frame_faces) {
+    if (!smoothing_applies() || !smooth.frame_has_camera || faces->faces != host.frame_faces.data()) {
         smooth.active = false;
         return false;
     }

@@ -1,8 +1,8 @@
+#include <kf/platform/prelude.h>
 #include <kf/game/graphics.h>
-
-#include <kf/lib/map_data.h>
 #include <kf/game/render.h>
 #include <kf/game/state.h>
+#include <kf/lib/map_data.h>
 
 enum {
     ACTOR_CULL_SQUARE_HALF_WIDTH = 12,
@@ -98,7 +98,7 @@ void render_entities(void)
     game_graphics_runtime.active_render_color.r = KF_FLOOR_ITEM_RENDER_BRIGHTNESS;
     const s16 item_count = game_graphics_runtime.floor_item_count;
     game_graphics_runtime.active_render_material = game_graphics_runtime.floor_item_material;
-    auto *items = game_graphics_runtime.floor_items;
+    auto *items = game_graphics_runtime.floor_items.data();
     for (s16 index = 0; index < item_count; index++) {
         auto &item = items[index];
         if (render_cell_is_visible(
@@ -114,14 +114,14 @@ void render_entities(void)
     }
 
     for (std::size_t i = 0; i < std::size(effect_state.records); ++i) {
-        auto &sprite = effect_state.records[i];
-        if (sprite.type == KF_EFFECT_SLOT_FREE || sprite.render_id.model == KF_EFFECT_MODEL_NONE) {
+        auto &effect = effect_state.records[i];
+        if (effect.type == KF_EFFECT_SLOT_FREE || effect.render_id.model == KF_EFFECT_MODEL_NONE) {
             continue;
         }
         if (render_cell_is_visible(
-                sprite.position.vx / KF_MAP_TILE_SIZE, sprite.position.vz / KF_MAP_TILE_SIZE, origin)) {
-            tag(512, i, sprite.position.vx, sprite.position.vy, sprite.position.vz, 0, 0);
-            render_actor_sprite(&sprite, &render_light_matrices[KF_RENDER_LIGHT_EFFECT]);
+                effect.position.vx / KF_MAP_TILE_SIZE, effect.position.vz / KF_MAP_TILE_SIZE, origin)) {
+            tag(512, i, effect.position.vx, effect.position.vy, effect.position.vz, 0, 0);
+            render_effect(&effect, &render_light_matrices[KF_RENDER_LIGHT_EFFECT]);
         }
     }
 
@@ -130,7 +130,7 @@ void render_entities(void)
         if (event.state == KF_MAP_EVENT_ACTIVE
             && render_cell_is_visible(event.cell_x, event.cell_z, origin)) {
             tag(1024, i, event.reference_position.vx, event.reference_position.vy, event.reference_position.vz, 0, 0);
-            render_map_event(&event, &game_graphics_runtime.light_matrix_copy);
+            render_map_event(&event, &game_graphics_runtime.map_event_light_matrix);
         }
     }
     kf::render_entity_tag = 0;

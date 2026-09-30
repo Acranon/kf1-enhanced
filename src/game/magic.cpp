@@ -1,10 +1,10 @@
-#include <kf/lib/null.h>
-
-#include <kf/lib/map_data.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/collision.h>
-#include <kf/game/player.h>
 #include <kf/game/game.h>
 #include <kf/game/magic.h>
+#include <kf/game/player.h>
+#include <kf/lib/map_data.h>
+#include <kf/lib/null.h>
 
 enum {
     MAGIC_LAUNCH_OFFSET_X = -200,
@@ -33,6 +33,9 @@ void magic_load_records(const KfMagicTable *table)
 void magic_cast(void)
 {
     switch (player_state.selected_magic_id) {
+    default:
+        // Only the listed attack spells launch a world effect here.
+        break;
     case KF_MAGIC_LIGHTNING_BOLT:
     case KF_MAGIC_FIRE_BALL:
     case KF_MAGIC_WIND_CUTTER:
@@ -140,7 +143,7 @@ void magic_cast(void)
     }
 }
 
-void effect_pool_sweep(void)
+void effect_pool_update(void)
 {
     for (auto &record : effect_state.records) {
         if (record.type != KF_EFFECT_SLOT_FREE) {

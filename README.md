@@ -151,9 +151,7 @@ Windows build:
 
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases) (the
   `ucrt-x86_64` package), with its `bin` folder on `PATH`.
-- [Rust](https://rustup.rs) with the `x86_64-pc-windows-gnullvm` host toolchain
-  (`rustup toolchain install stable-x86_64-pc-windows-gnullvm` and make it the
-  default), used for the original codecs.
+- Python 3 (the build step that can embed a translation delta, as upstream).
 - CMake 3.25 or newer and Ninja.
 
 ```sh

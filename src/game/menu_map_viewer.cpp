@@ -1,8 +1,10 @@
-#include <kf/game/graphics.h>
-
-#include <kf/game/menu.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/menu.h>
 #include <kf/lib/render_face.h>
+
+#include <array>
 
 static constexpr int MENU_MAP_PIXELS_PER_CELL = 2;
 static constexpr int MENU_MAP_MARKER_SPAN = 4;
@@ -27,20 +29,20 @@ void menu_map_viewer(KfObjectId item_id)
     s32 frame = 0;
     kf::DrawFace background{};
     kf::DrawFace marker{};
-    char path[map_image_path_capacity] = "MAP/M00.";
+    std::array<char, map_image_path_capacity> path = {"MAP/M00."};
     u8 *buffer;
-    s32 map_number;
+    s32 map_set;
 
-    map_number = MENU_MAP_DEFAULT_SET;
+    map_set = MENU_MAP_DEFAULT_SET;
     if (item_id == KF_ITEM_WATCHMAN_MAP)
-        map_number = MENU_MAP_WATCHMAN_SET;
-    path[map_image_set_offset] = map_number + '0';
+        map_set = MENU_MAP_WATCHMAN_SET;
+    path[map_image_set_offset] = map_set + '0';
     path[map_image_floor_offset] = kf_enum_encode<u8>(player_state.progress_state.current_floor) + '0';
 
     buffer = game_graphics_runtime.display_state.asset_load_buffer;
     std::size_t image_size;
     if (resource_file_load_into(buffer,
-            game_graphics_runtime.display_state.asset_load_capacity, path, &image_size) != KF_RESOURCE_LOADED)
+            game_graphics_runtime.display_state.asset_load_capacity, path.data(), &image_size) != KF_RESOURCE_LOADED)
         return;
     tim_upload_images(buffer, image_size);
 
@@ -52,7 +54,7 @@ void menu_map_viewer(KfObjectId item_id)
         MENU_MAP_IMAGE_LEFT_X + MENU_MAP_IMAGE_SPAN, MENU_MAP_IMAGE_TOP_Y + MENU_MAP_IMAGE_SPAN);
 
     marker.material = render_texture_material(MENU_MAP_MARKER_TPAGE, MENU_MAP_MARKER_CLUT);
-    marker.depth = MENU_MARKER_OT_DEPTH;
+    marker.depth = MENU_OVERLAY_OT_DEPTH;
     render_face_uv_rectangle(&marker, 0, 0, MENU_MAP_MARKER_SPAN, MENU_MAP_MARKER_SPAN);
     const s32 marker_x = player_state.motion_state.map_cell.x * MENU_MAP_PIXELS_PER_CELL + MENU_MAP_MARKER_ORIGIN_X;
     const s32 marker_y = MENU_MAP_MARKER_ORIGIN_Y - player_state.motion_state.map_cell.z * MENU_MAP_PIXELS_PER_CELL;

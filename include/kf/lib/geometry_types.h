@@ -1,11 +1,15 @@
-#pragma once
+#ifndef KF_LIB_GEOMETRY_TYPES_H
+#define KF_LIB_GEOMETRY_TYPES_H
+
 #include <kf/lib/types.h>
+
+#include <array>
 #include <cstddef>
 #include <type_traits>
 
 // Fixed-point value layouts also used by the original resource formats. These
 // types carry values only; portable rendering has no implicit register state.
-struct MATRIX { s16 m[3][3]; s32 t[3]; };
+struct MATRIX { std::array<std::array<s16, 3>, 3> m; std::array<s32, 3> t; };
 struct SVECTOR;
 
 // Constructed values initialize unused layout padding; arithmetic changes XYZ.
@@ -70,3 +74,5 @@ static_assert(std::is_standard_layout_v<VECTOR> && std::is_standard_layout_v<SVE
 static_assert(std::is_trivially_copyable_v<VECTOR> && std::is_trivially_copyable_v<SVECTOR>);
 static_assert(std::is_trivially_default_constructible_v<VECTOR>
     && std::is_trivially_default_constructible_v<SVECTOR>);
+
+#endif // KF_LIB_GEOMETRY_TYPES_H

@@ -3,6 +3,6 @@
 
 #ifndef NULL
 #define NULL 0
-#endif
+#endif // NULL
 
-#endif
+#endif // KF_NULL_H

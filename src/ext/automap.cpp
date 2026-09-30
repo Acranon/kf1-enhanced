@@ -1,9 +1,9 @@
 // Automap: a north-up minimap in a corner and a full floor map on M, drawn from
-// the snapshot the game publishes each update (kf/platform/automap.hpp).
+// the snapshot the game publishes each update (kf/platform/automap.h).
 #include "internal.hpp"
 #include <imgui.h>
-#include <kf/platform/automap.hpp>
-#include <kf/platform/input.hpp>
+#include <kf/platform/automap.h>
+#include <kf/platform/input.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

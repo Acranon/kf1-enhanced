@@ -1,15 +1,17 @@
-#include <kf/platform/assets.hpp>
-#include <bit>
+#include <kf/platform/assets.h>
+#include <kf/platform/translation.h>
+
 #include <algorithm>
+#include <bit>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <limits>
+#include <new>
+#include <string_view>
+#include <utility>
 
 namespace kf {
 namespace {
 constexpr unsigned maximum_tim_dimension = 4096;
-constexpr std::size_t initial_asset_capacity = 64;
 constexpr unsigned sha256_round_count = 64;
 constexpr unsigned sha256_input_words = 16;
 constexpr unsigned sha256_length_offset = 56;
@@ -51,49 +53,31 @@ constexpr double import_metadata_progress = 0.1;
 constexpr double import_file_progress = 0.9;
 }
 
-bool buffer_resize(ByteBuffer *buffer, std::size_t size) {
-    if (size > buffer->capacity) {
-        void *allocation = std::realloc(buffer->data, size);
-        if (!allocation)
-            return false;
-        buffer->data = static_cast<u8 *>(allocation);
-        buffer->capacity = size;
-    }
-    buffer->size = size;
-    return true;
-}
-void buffer_release(ByteBuffer *buffer) {
-    std::free(buffer->data);
-    *buffer = {};
-}
-void image_release(Image *image) {
-    buffer_release(&image->rgba);
-    *image = {};
-}
 bool image_decode_tim(Image *image, const u8 *data, std::size_t size, std::size_t offset,
                       u32 palette) {
     KfTimInfo info{};
-    if (kf_tim_info(data, size, offset, &info) != KF_CODEC_OK)
+    if (kf_tim_info({data, size}, offset, info) != KF_CODEC_OK)
         return false;
     if (info.width > maximum_tim_dimension || info.height > maximum_tim_dimension)
         return false;
     Image decoded{info.width, info.height, {}};
-    if (!buffer_resize(&decoded.rgba, static_cast<std::size_t>(info.width) * info.height * 4))
-        return false;
-    if (kf_tim_rgba(data, size, offset, palette, decoded.rgba.data, decoded.rgba.size) !=
-        KF_CODEC_OK) {
-        image_release(&decoded);
+    try {
+        decoded.rgba.resize(static_cast<std::size_t>(info.width) * info.height * 4);
+    } catch (const std::bad_alloc &) {
         return false;
     }
-    image_release(image);
-    *image = decoded;
+    if (kf_tim_rgba({data, size}, offset, palette, decoded.rgba) !=
+        KF_CODEC_OK) {
+        return false;
+    }
+    *image = std::move(decoded);
     return true;
 }
-bool asset_path(char *output, std::size_t capacity, const char *input) {
+bool asset_path(std::span<char> output, const char *input) {
     std::size_t size = 0;
-    const char prefix[] = "CDROM:";
+    constexpr std::string_view prefix = "CDROM:";
     std::size_t matched = 0;
-    while (matched < sizeof prefix - 1 && input[matched]) {
+    while (matched < prefix.size() && input[matched]) {
         char c = input[matched];
         if (c >= 'a' && c <= 'z')
             c -= 'a' - 'A';
@@ -101,12 +85,12 @@ bool asset_path(char *output, std::size_t capacity, const char *input) {
             break;
         ++matched;
     }
-    if (matched == sizeof prefix - 1)
-        input += sizeof prefix - 1;
+    if (matched == prefix.size())
+        input += prefix.size();
     while (*input == '/' || *input == '\\')
         ++input;
     while (*input && *input != ';') {
-        if (size + 1 >= capacity)
+        if (size + 1 >= output.size())
             return false;
         char c = *input++;
         if (c == '\\')
@@ -117,11 +101,11 @@ bool asset_path(char *output, std::size_t capacity, const char *input) {
             return false;
         output[size++] = c;
     }
-    if (!size || !capacity)
+    if (!size || output.empty())
         return false;
     output[size] = 0;
-    const char *segment = output;
-    for (const char *at = output;; ++at) {
+    const char *segment = output.data();
+    for (const char *at = output.data();; ++at) {
         if (*at && *at != '/')
             continue;
         const auto length = at - segment;
@@ -134,44 +118,29 @@ bool asset_path(char *output, std::size_t capacity, const char *input) {
     }
     return true;
 }
-bool assets_append(AssetTable *table, const char *path, ByteBuffer *bytes) {
-    char normalized[asset_path_capacity];
-    if (!asset_path(normalized, sizeof normalized, path) || assets_find(table, normalized))
+bool assets_append(AssetTable &table, const char *path, ByteBuffer &&bytes) {
+    std::array<char, asset_path_capacity> normalized{};
+    if (table.size() == table.max_size() ||
+        !asset_path(normalized, path) || assets_find(table, normalized.data()))
         return false;
-    if (table->count == table->capacity) {
-        const auto capacity = table->capacity ? table->capacity * 2 : initial_asset_capacity;
-        if (capacity > std::numeric_limits<std::size_t>::max() / sizeof(Asset))
-            return false;
-        auto *entries =
-            static_cast<Asset *>(std::realloc(table->entries, capacity * sizeof(Asset)));
-        if (!entries)
-            return false;
-        table->entries = entries;
-        table->capacity = capacity;
+    try {
+        table.emplace_back(normalized, std::move(bytes));
+    } catch (const std::bad_alloc &) {
+        return false;
     }
-    auto *asset = &table->entries[table->count++];
-    std::snprintf(asset->path, sizeof asset->path, "%s", normalized);
-    asset->bytes = *bytes;
-    *bytes = {};
     return true;
 }
-const Asset *assets_find(const AssetTable *table, const char *path) {
-    char normalized[asset_path_capacity];
-    if (!asset_path(normalized, sizeof normalized, path))
+Asset *assets_find(AssetTable &table, const char *path) {
+    std::array<char, asset_path_capacity> normalized{};
+    if (!asset_path(normalized, path))
         return nullptr;
-    for (std::size_t i = 0; i < table->count; ++i)
-        if (std::strcmp(table->entries[i].path, normalized) == 0)
-            return &table->entries[i];
+    for (auto &asset : table)
+        if (std::strcmp(asset.path.data(), normalized.data()) == 0)
+            return &asset;
     return nullptr;
 }
-void assets_release(AssetTable *table) {
-    for (std::size_t i = 0; i < table->count; ++i)
-        buffer_release(&table->entries[i].bytes);
-    std::free(table->entries);
-    *table = {};
-}
 
-static constexpr u32 sha_constants[sha256_round_count] = {
+static constexpr std::array<u32, sha256_round_count> sha_constants = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
     0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -187,19 +156,19 @@ void sha256_init(Sha256 *hash) {
              0,
              0};
 }
-static void sha256_block(Sha256 *hash, const u8 *data) {
-    u32 words[sha256_round_count];
-    for (unsigned i = 0; i < sha256_input_words; ++i)
+static void sha256_block(Sha256 *hash, std::span<const u8, sha256_block_bytes> data) {
+    std::array<u32, sha256_round_count> words;
+    for (std::size_t i = 0; i < sha256_input_words; ++i)
         words[i] = (u32(data[i * 4]) << 24) | (u32(data[i * 4 + 1]) << 16) |
                    (u32(data[i * 4 + 2]) << 8) | data[i * 4 + 3];
-    for (unsigned i = sha256_input_words; i < sha256_round_count; ++i) {
+    for (std::size_t i = sha256_input_words; i < sha256_round_count; ++i) {
         const auto a = words[i - 15], b = words[i - 2];
         words[i] = words[i - 16] + (std::rotr(a, 7) ^ std::rotr(a, 18) ^ (a >> 3)) + words[i - 7] +
                    (std::rotr(b, 17) ^ std::rotr(b, 19) ^ (b >> 10));
     }
     u32 a = hash->state[0], b = hash->state[1], c = hash->state[2], d = hash->state[3];
     u32 e = hash->state[4], f = hash->state[5], g = hash->state[6], h = hash->state[7];
-    for (unsigned i = 0; i < sha256_round_count; ++i) {
+    for (std::size_t i = 0; i < sha256_round_count; ++i) {
         const auto t1 = h + (std::rotr(e, 6) ^ std::rotr(e, 11) ^ std::rotr(e, 25)) +
                         ((e & f) ^ (~e & g)) + sha_constants[i] + words[i];
         const auto t2 =
@@ -213,39 +182,36 @@ static void sha256_block(Sha256 *hash, const u8 *data) {
         b = a;
         a = t1 + t2;
     }
-    const u32 result[8] = {a, b, c, d, e, f, g, h};
-    for (unsigned i = 0; i < 8; ++i)
+    const std::array<u32, 8> result = {a, b, c, d, e, f, g, h};
+    for (std::size_t i = 0; i < result.size(); ++i)
         hash->state[i] += result[i];
 }
-void sha256_update(Sha256 *hash, const u8 *bytes, std::size_t size) {
-    hash->length += size;
-    while (size) {
-        auto count = sizeof hash->pending - hash->used;
-        if (count > size)
-            count = size;
-        std::memcpy(hash->pending + hash->used, bytes, count);
+void sha256_update(Sha256 *hash, std::span<const u8> bytes) {
+    hash->length += bytes.size();
+    while (!bytes.empty()) {
+        const auto count = std::min(hash->pending.size() - hash->used, bytes.size());
+        std::copy_n(bytes.begin(), count, hash->pending.begin() + hash->used);
         hash->used += count;
-        bytes += count;
-        size -= count;
-        if (hash->used == sizeof hash->pending) {
+        bytes = bytes.subspan(count);
+        if (hash->used == hash->pending.size()) {
             sha256_block(hash, hash->pending);
             hash->used = 0;
         }
     }
 }
-void sha256_finish(const Sha256 *input, char output[sha256_hex_capacity]) {
+void sha256_finish(const Sha256 *input, std::span<char, sha256_hex_capacity> output) {
     auto hash = *input;
     const auto bits = hash.length * 8;
     const u8 marker = sha256_padding_marker, zero = 0;
-    sha256_update(&hash, &marker, 1);
+    sha256_update(&hash, {&marker, 1});
     while (hash.used != sha256_length_offset)
-        sha256_update(&hash, &zero, 1);
-    u8 length[8];
-    for (unsigned i = 0; i < 8; ++i)
-        length[i] = static_cast<u8>(bits >> ((sizeof length - 1 - i) * 8));
-    sha256_update(&hash, length, sizeof length);
-    for (unsigned i = 0; i < 8; ++i)
-        std::snprintf(output + i * 8, 9, "%08x", hash.state[i]);
+        sha256_update(&hash, {&zero, 1});
+    std::array<u8, 8> length;
+    for (std::size_t i = 0; i < length.size(); ++i)
+        length[i] = static_cast<u8>(bits >> ((length.size() - 1 - i) * 8));
+    sha256_update(&hash, length);
+    for (std::size_t i = 0; i < hash.state.size(); ++i)
+        std::snprintf(output.data() + i * 8, 9, "%08x", hash.state[i]);
 }
 
 static u32 le32(const u8 *p) {
@@ -254,44 +220,64 @@ static u32 le32(const u8 *p) {
 static u32 be32(const u8 *p) {
     return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
 }
-DiscMatch assets_classify(AssetTable *table) {
-    if (table->count != retail_resource_file_count)
-        return DiscMatch::Foreign;
-    std::sort(table->entries, table->entries + table->count,
-              [](const Asset &a, const Asset &b) { return std::strcmp(a.path, b.path) < 0; });
-    Sha256 hash{}, resources{};
+const char *assets_language_hash(Language language) {
+    return language == Language::English ? english_v1_files_sha256 : retail_files_sha256;
+}
+// Digests of every file, and of every file except GAME.EXE (see english_resources_sha256).
+static bool assets_digests(AssetTable &table, std::array<char, sha256_hex_capacity> &files,
+                           std::array<char, sha256_hex_capacity> &resources) {
+    if (table.size() != retail_resource_file_count)
+        return false;
+    std::sort(table.begin(), table.end(),
+              [](const Asset &a, const Asset &b) { return std::strcmp(a.path.data(), b.path.data()) < 0; });
+    Sha256 hash{}, without_exe{};
     sha256_init(&hash);
-    sha256_init(&resources);
+    sha256_init(&without_exe);
     std::size_t total = 0;
-    for (std::size_t i = 0; i < table->count; ++i) {
-        const auto &asset = table->entries[i];
-        const auto path_size = std::strlen(asset.path);
-        if (asset.bytes.size > disc_import_limit - total)
-            return DiscMatch::Foreign;
-        total += asset.bytes.size;
-        u8 sizes[8];
-        for (unsigned byte = 0; byte < 4; ++byte) {
+    for (const auto &asset : table) {
+        const auto path_size = std::strlen(asset.path.data());
+        if (asset.bytes.size() > disc_import_limit - total)
+            return false;
+        total += asset.bytes.size();
+        std::array<u8, 8> sizes;
+        for (std::size_t byte = 0; byte < 4; ++byte) {
             sizes[byte] = static_cast<u8>(path_size >> (byte * 8));
-            sizes[byte + 4] = static_cast<u8>(asset.bytes.size >> (byte * 8));
+            sizes[byte + 4] = static_cast<u8>(asset.bytes.size() >> (byte * 8));
         }
-        sha256_update(&hash, sizes, sizeof sizes);
-        sha256_update(&hash, reinterpret_cast<const u8 *>(asset.path), path_size);
-        sha256_update(&hash, asset.bytes.data, asset.bytes.size);
-        if (std::strcmp(asset.path, "GAME.EXE") != 0) {
-            sha256_update(&resources, sizes, sizeof sizes);
-            sha256_update(&resources, reinterpret_cast<const u8 *>(asset.path), path_size);
-            sha256_update(&resources, asset.bytes.data, asset.bytes.size);
+        const std::span<const u8> path{reinterpret_cast<const u8 *>(asset.path.data()), path_size};
+        sha256_update(&hash, sizes);
+        sha256_update(&hash, path);
+        sha256_update(&hash, asset.bytes);
+        if (std::strcmp(asset.path.data(), "GAME.EXE") != 0) {
+            sha256_update(&without_exe, sizes);
+            sha256_update(&without_exe, path);
+            sha256_update(&without_exe, asset.bytes);
         }
     }
-    char digest[sha256_hex_capacity], resources_digest[sha256_hex_capacity];
-    sha256_finish(&hash, digest);
-    sha256_finish(&resources, resources_digest);
-    if (std::strcmp(digest, retail_files_sha256) == 0)
+    sha256_finish(&hash, files);
+    sha256_finish(&without_exe, resources);
+    return true;
+}
+bool assets_match_language(AssetTable &table, Language language) {
+    std::array<char, sha256_hex_capacity> files, resources;
+    if (!assets_digests(table, files, resources))
+        return false;
+    if (std::strcmp(files.data(), assets_language_hash(language)) == 0)
+        return true;
+    // English v1.0 with the save-bug fix differs only in GAME.EXE, which never runs.
+    return language == Language::English && std::strcmp(resources.data(), english_resources_sha256) == 0;
+}
+DiscMatch assets_classify(AssetTable &table) {
+    std::array<char, sha256_hex_capacity> files, resources;
+    if (!assets_digests(table, files, resources))
+        return DiscMatch::Foreign;
+    if (std::strcmp(files.data(), retail_files_sha256) == 0)
         return DiscMatch::Japanese;
-    if (std::strcmp(resources_digest, english_resources_sha256) == 0)
+    if (std::strcmp(files.data(), english_v1_files_sha256) == 0 ||
+        std::strcmp(resources.data(), english_resources_sha256) == 0)
         return DiscMatch::English;
     std::printf("Disc files differ from the Japanese release and the English translation v1.0; using them as they are.\n"
-                "Files digest: %s\n", digest);
+                "Files digest: %s\n", files.data());
     return DiscMatch::Modified;
 }
 static void read_extent(DiscImporter *importer, const DiscExtent *file) {
@@ -310,15 +296,20 @@ static void read_extent(DiscImporter *importer, const DiscExtent *file) {
 }
 static void next_file(DiscImporter *importer) {
     if (importer->file_index == importer->file_count) {
-        // Patched discs (the English translation) keep the retail file set.
-        if (assets_classify(&importer->assets) == DiscMatch::Foreign) {
-            disc_import_fail(importer, "This disc image is not King's Field (Japan, SLPS-00017).");
-            return;
+        // PC extension: the Windows flow accepts every release with the retail
+        // file set (such as the English translation) and sorts them afterwards.
+        if (importer->any_release) {
+            if (assets_classify(importer->assets) == DiscMatch::Foreign) {
+                disc_import_fail(importer, "This disc image is not King's Field (Japan, SLPS-00017).");
+                return;
+            }
+        } else if (const char *error = assets_prepare_language(importer->assets, importer->language)) {
+            disc_import_fail(importer, error);            return;
         }
         importer->state = ImportState::complete;
         importer->request = {};
-        std::snprintf(importer->message, sizeof importer->message, "Imported %zu resource files.",
-                      importer->assets.count);
+        std::snprintf(importer->message.data(), importer->message.size(), "Imported %zu resource files.",
+                      importer->assets.size());
         return;
     }
     importer->state = ImportState::file;
@@ -334,55 +325,59 @@ static void next_directory(DiscImporter *importer) {
     read_extent(importer, &directory);
 }
 void disc_import_fail(DiscImporter *importer, const char *message) {
-    std::snprintf(importer->message, sizeof importer->message, "%s", message);
+    std::snprintf(importer->message.data(), importer->message.size(), "%s", message);
     importer->state = ImportState::failed;
     importer->request = {};
-    assets_release(&importer->assets);
+    importer->assets.clear();
 }
-void disc_import_start(DiscImporter *importer, std::uint64_t disc_size) {
-    disc_import_release(importer);
+void disc_import_start(DiscImporter *importer, std::uint64_t disc_size, Language language) {
+    *importer = {};
+    importer->language = language;
     if (disc_size < (iso_primary_volume_sector + 1) * iso_payload_bytes || disc_size > disc_import_limit) {
-        disc_import_fail(importer, "Expected a Japanese SLPS-00017 ISO or BIN image (up to 128 MiB).");
+        disc_import_fail(importer, "Expected an SLPS-00017 ISO or BIN image (up to 128 MiB).");
         return;
     }
     importer->disc_size = disc_size;
     importer->state = ImportState::layout;
     importer->request = {0, cd_raw_sector_bytes};
-    std::snprintf(importer->message, sizeof importer->message,
-                  "Verifying Japanese SLPS-00017 disc...");
+    std::snprintf(importer->message.data(), importer->message.size(),
+                  "Verifying %s SLPS-00017 disc...", language_name(language));
 }
 bool disc_import_waiting(const DiscImporter *importer) {
     return importer->state >= ImportState::layout && importer->state <= ImportState::file;
 }
-static bool unpack_payload(DiscImporter *importer, const u8 *raw, std::size_t size,
-                           ByteBuffer *output) {
+static bool unpack_payload(DiscImporter *importer, std::span<const u8> raw,
+                           ByteBuffer &output) {
     const auto length = importer->current.length;
-    if (!buffer_resize(output, length))
+    try {
+        output.resize(length);
+    } catch (const std::bad_alloc &) {
         return false;
+    }
     for (std::size_t at = 0, sector = 0; at < length; at += iso_payload_bytes, sector += importer->sector_size) {
         auto count = length - at;
         if (count > iso_payload_bytes)
             count = iso_payload_bytes;
         const auto header = importer->sector_size == cd_raw_sector_bytes ? cd_mode2_payload_offset : 0u;
-        if (sector + header + count > size)
+        if (sector + header + count > raw.size())
             return false;
         if (header && (raw[sector + cd_mode_offset] != cd_mode2 || (raw[sector + cd_submode_offset] & cd_form2_flag) ||
-                       std::memcmp(raw + sector + cd_subheader_offset, raw + sector + cd_subheader_copy_offset, cd_subheader_bytes) != 0))
+                       std::memcmp(raw.data() + sector + cd_subheader_offset, raw.data() + sector + cd_subheader_copy_offset, cd_subheader_bytes) != 0))
             return false;
-        std::memcpy(output->data + at, raw + sector + header, count);
+        std::memcpy(output.data() + at, raw.data() + sector + header, count);
     }
     return true;
 }
-static bool parse_directory(DiscImporter *importer, const ByteBuffer *bytes) {
-    for (std::size_t at = 0; at < bytes->size;) {
-        const auto length = bytes->data[at];
+static bool parse_directory(DiscImporter *importer, std::span<const u8> bytes) {
+    for (std::size_t at = 0; at < bytes.size();) {
+        const auto length = bytes.data()[at];
         if (!length) {
             at = (at / iso_payload_bytes + 1) * iso_payload_bytes;
             continue;
         }
-        if (length < iso_minimum_record_bytes || length > bytes->size - at || at % iso_payload_bytes + length > iso_payload_bytes)
+        if (length < iso_minimum_record_bytes || length > bytes.size() - at || at % iso_payload_bytes + length > iso_payload_bytes)
             return false;
-        const auto *row = bytes->data + at;
+        const auto *row = bytes.data() + at;
         const auto name_length = row[iso_name_length_offset];
         if (iso_name_offset + name_length > length)
             return false;
@@ -394,38 +389,38 @@ static bool parse_directory(DiscImporter *importer, const ByteBuffer *bytes) {
         if ((row[iso_flags_offset] & iso_multi_extent_flag) || row[iso_extended_attributes_offset] || row[iso_file_unit_offset] || row[iso_interleave_gap_offset] ||
             le32(row + iso_extent_le_offset) != be32(row + iso_extent_be_offset) || le32(row + iso_length_le_offset) != be32(row + iso_length_be_offset))
             return false;
-        char name[asset_path_capacity]{};
-        if (!name_length || name_length >= sizeof name)
+        std::array<char, asset_path_capacity> name{};
+        if (!name_length || name_length >= name.size())
             return false;
-        std::memcpy(name, row + iso_name_offset, name_length);
-        for (unsigned i = 0; i < name_length; ++i)
+        std::memcpy(name.data(), row + iso_name_offset, name_length);
+        for (std::size_t i = 0; i < name_length; ++i)
             if (name[i] < ascii_first_printable || name[i] >= ascii_delete || name[i] == '/' || name[i] == '\\')
                 return false;
-        if (const char *version = std::strchr(name, ';');
+        if (const char *version = std::strchr(name.data(), ';');
             version && ((row[iso_flags_offset] & iso_directory_flag) || std::strcmp(version, ";1") != 0))
             return false;
         DiscExtent file{};
         const int written =
-            std::snprintf(file.path, sizeof file.path, "%s%s%s", importer->current.path,
-                          importer->current.path[0] ? "/" : "", name);
-        if (written < 0 || std::size_t(written) >= sizeof file.path)
+            std::snprintf(file.path.data(), file.path.size(), "%s%s%s", importer->current.path.data(),
+                          importer->current.path[0] ? "/" : "", name.data());
+        if (written < 0 || std::size_t(written) >= file.path.size())
             return false;
         file.sector = le32(row + iso_extent_le_offset);
         file.length = le32(row + iso_length_le_offset);
-        char normalized[asset_path_capacity];
-        if (!asset_path(normalized, sizeof normalized, file.path))
+        std::array<char, asset_path_capacity> normalized{};
+        if (!asset_path(normalized, file.path.data()))
             return false;
-        std::snprintf(file.path, sizeof file.path, "%s", normalized);
+        file.path = normalized;
         if (row[iso_flags_offset] & iso_directory_flag) {
             for (std::size_t i = 0; i < importer->visited_count; ++i)
                 if (importer->visited_directories[i] == file.sector)
                     return false;
-            if (importer->visited_count == disc_directory_capacity || importer->directory_count == disc_directory_capacity)
+            if (importer->visited_count == importer->visited_directories.size() || importer->directory_count == importer->directories.size())
                 return false;
             importer->visited_directories[importer->visited_count++] = file.sector;
             importer->directories[importer->directory_count++] = file;
         } else {
-            if (importer->file_count == disc_file_capacity || file.length > disc_import_limit - importer->file_bytes)
+            if (importer->file_count == importer->files.size() || file.length > disc_import_limit - importer->file_bytes)
                 return false;
             importer->file_bytes += file.length;
             importer->files[importer->file_count++] = file;
@@ -434,46 +429,45 @@ static bool parse_directory(DiscImporter *importer, const ByteBuffer *bytes) {
     }
     return true;
 }
-void disc_import_supply(DiscImporter *importer, const u8 *bytes, std::size_t size) {
+void disc_import_supply(DiscImporter *importer, std::span<const u8> bytes) {
     if (!disc_import_waiting(importer))
         return;
-    if (size != importer->request.length || (!bytes && size)) {
+    if (bytes.size() != importer->request.length) {
         disc_import_fail(importer, "Disc read was incomplete.");
         return;
     }
     if (importer->state == ImportState::layout) {
-        constexpr u8 sync[] = {0,255,255,255,255,255,255,255,255,255,255,0};
-        importer->sector_size = std::memcmp(bytes, sync, sizeof sync) == 0 ? cd_raw_sector_bytes : iso_payload_bytes;
+        constexpr std::array<u8, 12> sync = {0,255,255,255,255,255,255,255,255,255,255,0};
+        importer->sector_size = std::memcmp(bytes.data(), sync.data(), sync.size()) == 0 ? cd_raw_sector_bytes : iso_payload_bytes;
         if (importer->disc_size % importer->sector_size != 0) {
             disc_import_fail(importer, "Image has an incomplete data sector.");
             return;
         }
         importer->state = ImportState::volume;
-        const DiscExtent volume{"", iso_primary_volume_sector, iso_payload_bytes};
+        const DiscExtent volume{{}, iso_primary_volume_sector, iso_payload_bytes};
         read_extent(importer, &volume);
         return;
     }
     ByteBuffer payload{};
-    if (!unpack_payload(importer, bytes, size, &payload)) {
-        buffer_release(&payload);
+    if (!unpack_payload(importer, bytes, payload)) {
         disc_import_fail(importer, "Invalid data sector or allocation failure.");
         return;
     }
     if (importer->state == ImportState::volume) {
-        if (payload.size != iso_payload_bytes || std::memcmp(payload.data, "\1CD001\1", 7) != 0 ||
-            std::memcmp(payload.data + iso_volume_id_offset, "SLPS-00017                      ", iso_volume_id_bytes) != 0 ||
-            payload.data[iso_block_size_offset] != 0 || payload.data[iso_block_size_offset + 1] != 8 ||
-            payload.data[iso_block_size_offset + 2] != 8 || payload.data[iso_block_size_offset + 3] != 0 ||
-            le32(payload.data + iso_volume_size_le_offset) != be32(payload.data + iso_volume_size_be_offset) ||
-            le32(payload.data + iso_volume_size_le_offset) > importer->disc_size / importer->sector_size) {
+        if (payload.size() != iso_payload_bytes || std::memcmp(payload.data(), "\1CD001\1", 7) != 0 ||
+            std::memcmp(payload.data() + iso_volume_id_offset, "SLPS-00017                      ", iso_volume_id_bytes) != 0 ||
+            payload.data()[iso_block_size_offset] != 0 || payload.data()[iso_block_size_offset + 1] != 8 ||
+            payload.data()[iso_block_size_offset + 2] != 8 || payload.data()[iso_block_size_offset + 3] != 0 ||
+            le32(payload.data() + iso_volume_size_le_offset) != be32(payload.data() + iso_volume_size_be_offset) ||
+            le32(payload.data() + iso_volume_size_le_offset) > importer->disc_size / importer->sector_size) {
             disc_import_fail(importer, "Unsupported ISO9660 volume; Japanese SLPS-00017 is required.");
         } else {
-            const auto *root = payload.data + iso_root_record_offset;
+            const auto *root = payload.data() + iso_root_record_offset;
             if (root[0] < iso_minimum_record_bytes || root[iso_extended_attributes_offset] || !(root[iso_flags_offset] & iso_directory_flag) || root[iso_file_unit_offset] || root[iso_interleave_gap_offset] ||
                 le32(root + iso_extent_le_offset) != be32(root + iso_extent_be_offset) || le32(root + iso_length_le_offset) != be32(root + iso_length_be_offset)) {
                 disc_import_fail(importer, "Invalid ISO9660 root directory.");
             } else {
-                importer->volume_sectors = le32(payload.data + iso_volume_size_le_offset);
+                importer->volume_sectors = le32(payload.data() + iso_volume_size_le_offset);
                 importer->directories[importer->directory_count++] = {
                     {}, le32(root + iso_extent_le_offset), le32(root + iso_length_le_offset)};
                 importer->visited_directories[importer->visited_count++] = le32(root + iso_extent_le_offset);
@@ -481,17 +475,16 @@ void disc_import_supply(DiscImporter *importer, const u8 *bytes, std::size_t siz
             }
         }
     } else if (importer->state == ImportState::directory) {
-        if (!parse_directory(importer, &payload))
+        if (!parse_directory(importer, payload))
             disc_import_fail(importer, "Invalid ISO9660 directory.");
         else
             next_directory(importer);
     } else {
-        if (!assets_append(&importer->assets, importer->current.path, &payload))
+        if (!assets_append(importer->assets, importer->current.path.data(), std::move(payload)))
             disc_import_fail(importer, "Duplicate resource name or allocation failure.");
         else
             next_file(importer);
     }
-    buffer_release(&payload);
 }
 double disc_import_progress(const DiscImporter *importer) {
     if (!importer->disc_size)
@@ -499,11 +492,7 @@ double disc_import_progress(const DiscImporter *importer) {
     if (importer->state == ImportState::complete)
         return 1;
     return import_metadata_progress + (importer->file_count
-                      ? import_file_progress * double(importer->assets.count) / double(importer->file_count)
+                      ? import_file_progress * double(importer->assets.size()) / double(importer->file_count)
                       : 0);
-}
-void disc_import_release(DiscImporter *importer) {
-    assets_release(&importer->assets);
-    *importer = {};
 }
 } // namespace kf

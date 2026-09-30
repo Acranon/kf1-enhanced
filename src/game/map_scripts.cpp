@@ -1,18 +1,19 @@
-#include <kf/game/audio.h>
-#include <kf/lib/random.hpp>
-#include <kf/lib/null.h>
-#include <kf/lib/bool.h>
-#include <kf/game/graphics.h>
-
+#include <kf/platform/prelude.h>
 #include <kf/game/actor.h>
-#include <kf/lib/map_data.h>
-#include <kf/lib/map.h>
+#include <kf/game/audio.h>
 #include <kf/game/collision.h>
-#include <kf/game/notify.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/notify.h>
+#include <kf/lib/map.h>
+#include <kf/lib/map_data.h>
+#include <kf/lib/null.h>
+#include <kf/lib/random.h>
+
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace {
 constexpr unsigned floor2_harp_ambient_stage = 2, floor2_harp_ambient_page_end = 3;
@@ -60,11 +61,11 @@ enum {
     MAP_BOSS_REVEAL_YAW_MIN = 1808,
     MAP_BOSS_REVEAL_YAW_END = 2289,
     MAP_PASSAGE_OPEN_SOUND_VOLUME = 100,
-    MAP_REVEAL_FADE_IN_STEP = 128,
-    MAP_REVEAL_LIGHT_BLEND_SHIFT = 2,
-    MAP_REVEAL_RISE_STEP = 130,
-    MAP_REVEAL_YAW_STEP = 128,
-    MAP_REVEAL_FADE_OUT_STEP = 256,
+    MAP_TRANSFER_FADE_IN_STEP = 128,
+    MAP_TRANSFER_LIGHT_BLEND_SHIFT = 2,
+    MAP_TRANSFER_RISE_STEP = 130,
+    MAP_TRANSFER_YAW_STEP = 128,
+    MAP_TRANSFER_FADE_OUT_STEP = 256,
     MAP_WEAPON_TRANSFORM_HEIGHT = 1300,
     MAP_WEAPON_TRANSFORM_BLAST_HEIGHT = 600,
     MAP_WEAPON_TRANSFORM_MAX_YAW_STEP = 240,
@@ -88,24 +89,29 @@ static constexpr bool script_region_contains_cell(const ScriptCellRegion &region
         && cell.x < region.x_end && cell.z < region.z_end;
 }
 
-static KfCameraPathPoint map_floor5_camera_path[2] = {
-    {{173000, -11500, 85000, 0}, {0, KF_ANGLE_HALF_TURN, 0, 0}, 100, 0},
-    {{KF_CAMERA_PATH_END_X, -1, -1, 0}, {-1, -1, -1, 0}, -1, 0}
+static std::array<KfCameraPathPoint, 2> map_floor5_camera_path = {
+    KfCameraPathPoint{{173000, -11500, 85000, 0}, {0, KF_ANGLE_HALF_TURN, 0, 0}, 100, 0},
+    KfCameraPathPoint{{KF_CAMERA_PATH_END_X, -1, -1, 0}, {-1, -1, -1, 0}, -1, 0}
 };
 
 static VECTOR map_floor1_sound_position = {65000, -10000, 25000, 0};
 
-static MATRIX map_reveal_light_matrix = {
-    {{0, -KF_FIXED12_ONE, 0}, {0, -KF_FIXED12_ONE, 0}, {0, -KF_FIXED12_ONE, 0}}, {0, 0, 0}
+static MATRIX map_transfer_light_matrix = {
+    .m = {{
+        {0, -KF_FIXED12_ONE, 0},
+        {0, -KF_FIXED12_ONE, 0},
+        {0, -KF_FIXED12_ONE, 0},
+    }},
+    .t = {},
 };
 
 static constexpr unsigned map_screen_path_capacity = 16;
 static constexpr unsigned map_screen_floor_offset = 5, map_screen_group_offset = 8, map_screen_number_offset = 9;
-static char map_screen_image_path[map_screen_path_capacity] = "KAN/B0/K000.TIM";
+static std::array<char, map_screen_path_capacity> map_screen_image_path = {"KAN/B0/K000.TIM"};
 
 s32 actor_pool_find_at_tile(u8 tile_x, u8 tile_z)
 {
-    KfActor *actor = actor_state.actors;
+    KfActor *actor = actor_state.actors.data();
     s16 index;
 
     for (index = 0; index < KF_ACTOR_CAPACITY; index++, actor++) {
@@ -126,6 +132,8 @@ void map_ambient_script_floor1(void)
     }
 
     switch (map_floor_script(KF_FLOOR_1).floor1.actor_activation_stage) {
+    case KF_MAP_TRIGGER_COMPLETE:
+        break;
     case KF_MAP_TRIGGER_AWAIT_ENTRY:
         if (script_region_contains_cell(floor1_actor_entry, cell)) {
             map_floor_script(KF_FLOOR_1).floor1.actor_activation_stage = KF_MAP_TRIGGER_AWAIT_EXIT;
@@ -151,6 +159,8 @@ void map_ambient_script_floor1(void)
     }
 
     switch (map_floor_script(KF_FLOOR_1).floor1.object_removal_stage) {
+    case KF_MAP_TRIGGER_COMPLETE:
+        break;
     case KF_MAP_TRIGGER_AWAIT_ENTRY:
         if (script_region_contains_cell(floor1_removal_entry, cell)) {
             map_floor_script(KF_FLOOR_1).floor1.object_removal_stage = KF_MAP_TRIGGER_AWAIT_EXIT;
@@ -235,22 +245,22 @@ void map_action_script_floor1(void)
     }
 }
 
-void map_reveal_fade(void)
+void map_floor2_event_transfer_fade(void)
 {
     const auto input_context = kf::host_set_input_context(kf::InputContext::Scripted);
     MATRIX saved;
     s32 blend;
 
-    saved = game_graphics_runtime.light_matrix_copy;
+    saved = game_graphics_runtime.map_event_light_matrix;
 
-    for (blend = 0; blend < KF_FIXED12_ONE + 1; blend += MAP_REVEAL_FADE_IN_STEP) {
+    for (blend = 0; blend < KF_FIXED12_ONE + 1; blend += MAP_TRANSFER_FADE_IN_STEP) {
         lighting_set_color_matrix(game_graphics_runtime.render_state, &color_matrix_table[kf_enum_encode<s32>(KF_GAME_COLOR_DEFAULT)], &color_matrix_table[kf_enum_encode<s32>(KF_GAME_COLOR_WHITE)], blend);
         if (blend >= KF_FIXED12_ONE / 4 + 1) {
-            map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].reference_position.vy -= MAP_REVEAL_RISE_STEP;
-            map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].rotation.vy += MAP_REVEAL_YAW_STEP;
+            map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].reference_position.vy -= MAP_TRANSFER_RISE_STEP;
+            map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].rotation.vy += MAP_TRANSFER_YAW_STEP;
         } else {
-            matrix_interpolate(&saved, &map_reveal_light_matrix,
-                               &game_graphics_runtime.light_matrix_copy, blend << MAP_REVEAL_LIGHT_BLEND_SHIFT);
+            matrix_interpolate(&saved, &map_transfer_light_matrix,
+                               &game_graphics_runtime.map_event_light_matrix, blend << MAP_TRANSFER_LIGHT_BLEND_SHIFT);
         }
         render_frame(NULL, NULL);
     }
@@ -258,13 +268,13 @@ void map_reveal_fade(void)
     map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].state = KF_MAP_EVENT_DISABLED;
     map_floor_script(KF_FLOOR_5).floor5.character_arrived = KF_MAP_SCRIPT_SET;
 
-    for (blend = KF_FIXED12_ONE; blend >= 0; blend -= MAP_REVEAL_FADE_OUT_STEP) {
+    for (blend = KF_FIXED12_ONE; blend >= 0; blend -= MAP_TRANSFER_FADE_OUT_STEP) {
         lighting_set_color_matrix(game_graphics_runtime.render_state, &color_matrix_table[kf_enum_encode<s32>(KF_GAME_COLOR_DEFAULT)], &color_matrix_table[kf_enum_encode<s32>(KF_GAME_COLOR_WHITE)], blend);
         render_frame(NULL, NULL);
     }
 
     lighting_set_active_color_matrix(KF_GAME_COLOR_DEFAULT);
-    game_graphics_runtime.light_matrix_copy = saved;
+    game_graphics_runtime.map_event_light_matrix = saved;
     kf::host_set_input_context(input_context);
 }
 
@@ -272,7 +282,7 @@ void map_action_script_floor2(void)
 {
     if (map_dialogue_just_started(map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].dialogue, floor2_reveal_stage)
         && map_runtime_state.events[KF_FLOOR2_REVEAL_EVENT].state == KF_MAP_EVENT_ACTIVE) {
-        map_reveal_fade();
+        map_floor2_event_transfer_fade();
     }
 }
 
@@ -296,12 +306,12 @@ void map_action_script_floor4(void)
 {
 }
 
-void map_floor5_transition_cutscene(void)
+void map_floor5_weapon_transform_cutscene(void)
 {
     const auto input_context = kf::host_set_input_context(kf::InputContext::Scripted);
     MATRIX color_matrix;
     KfCameraPathState path;
-    KfMapObject *effect;
+    KfMapObject *sword;
     SVECTOR direction;
     VECTOR spawn;
     s32 grid_height;
@@ -331,19 +341,19 @@ void map_floor5_transition_cutscene(void)
     collision_adjust_cell_occupancy(player_state.motion_state.map_cell.x, player_state.motion_state.map_cell.z, 1);
 
     color_matrix = game_graphics_runtime.render_state.lighting.color_matrix;
-    effect = map_object_effect_pool_acquire(
-        KF_MAP_OBJECT_PLACEMENT_DROP_FIRST, KF_MAP_OBJECT_EFFECT_GROUP_CAPACITY, map_object_state.effect_sequence_180);
-    effect->object_id = KF_ITEM_DRAGON_SWORD;
-    effect->cell_x = weapon_transform_effect_cell.x;
-    effect->cell_z = weapon_transform_effect_cell.z;
-    effect->position.vx = effect->cell_x * KF_MAP_TILE_SIZE + KF_MAP_TILE_CENTER;
-    effect->position.vz = effect->cell_z * KF_MAP_TILE_SIZE + KF_MAP_TILE_CENTER;
-    grid_height = map_floor_height_grid.cells[effect->cell_z][effect->cell_x];
-    effect->rotation.angles.z = 0;
-    effect->rotation.angles.x = 0;
-    effect->rotation.angles.y = KF_ANGLE_HALF_TURN;
-    effect->action = KF_MAP_OBJECT_OP_NONE;
-    effect->position.vy = -(grid_height * KF_MAP_HEIGHT_STEP) - MAP_WEAPON_TRANSFORM_HEIGHT;
+    sword = map_object_effect_pool_acquire(
+        KF_MAP_OBJECT_PLACEMENT_DROP_FIRST, KF_MAP_OBJECT_EFFECT_GROUP_CAPACITY, map_object_state.placement_drop_sequence);
+    sword->object_id = KF_ITEM_DRAGON_SWORD;
+    sword->cell_x = weapon_transform_effect_cell.x;
+    sword->cell_z = weapon_transform_effect_cell.z;
+    sword->position.vx = sword->cell_x * KF_MAP_TILE_SIZE + KF_MAP_TILE_CENTER;
+    sword->position.vz = sword->cell_z * KF_MAP_TILE_SIZE + KF_MAP_TILE_CENTER;
+    grid_height = map_floor_height_grid.cells[sword->cell_z][sword->cell_x];
+    sword->rotation.angles.z = 0;
+    sword->rotation.angles.x = 0;
+    sword->rotation.angles.y = KF_ANGLE_HALF_TURN;
+    sword->action = KF_MAP_OBJECT_OP_NONE;
+    sword->position.vy = -(grid_height * KF_MAP_HEIGHT_STEP) - MAP_WEAPON_TRANSFORM_HEIGHT;
 
     spin = 0;
     hold = 0;
@@ -351,18 +361,18 @@ void map_floor5_transition_cutscene(void)
     for (;;) {
         switch (phase) {
         case MAP_WEAPON_TRANSFORM_SPIN_UP:
-            effect->rotation.angles.y += spin;
+            sword->rotation.angles.y += spin;
             if (hold != 0) {
                 hold -= 1;
                 if (hold == 1) {
                     phase = MAP_WEAPON_TRANSFORM_SPIN_DOWN;
                 } else if (hold == MAP_WEAPON_TRANSFORM_SWAP_COUNTDOWN) {
-                    spawn = effect->position;
+                    spawn = sword->position;
                     spawn.vy -= MAP_WEAPON_TRANSFORM_BLAST_HEIGHT;
                     effect_pool_construct(
                         0, KF_EFFECT_USE_PLAYER_MAGIC | KF_EFFECT_COLLISION_TARGET_ACTORS_AND_PLAYER,
                         KF_EFFECT_KIND_RADIAL_BLAST, &spawn, &direction, KfEffectSoundArguments{KF_EFFECT_SOUND_PLAY});
-                    effect->object_id = KF_ITEM_MOONLIGHT_SWORD;
+                    sword->object_id = KF_ITEM_MOONLIGHT_SWORD;
                 }
             } else if (spin < MAP_WEAPON_TRANSFORM_MAX_YAW_STEP) {
                 spin += MAP_WEAPON_TRANSFORM_YAW_ACCELERATION;
@@ -371,12 +381,12 @@ void map_floor5_transition_cutscene(void)
             }
             break;
         case MAP_WEAPON_TRANSFORM_SPIN_DOWN:
-            effect->rotation.angles.y += spin;
+            sword->rotation.angles.y += spin;
             if (spin > 0) {
                 spin -= MAP_WEAPON_TRANSFORM_YAW_ACCELERATION;
             } else {
-                map_object_start_action_if_idle(effect, KF_MAP_OBJECT_OP_FALL_AND_TIP);
-                effect->link.fields.vertical_velocity = 0;
+                map_object_start_action_if_idle(sword, KF_MAP_OBJECT_OP_FALL_AND_TIP);
+                sword->link.fields.vertical_velocity = 0;
                 kf::host_set_input_context(input_context);
                 return;
             }
@@ -384,7 +394,7 @@ void map_floor5_transition_cutscene(void)
         default:
             break;
         }
-        effect_pool_sweep();
+        effect_pool_update();
         render_frame(NULL, NULL);
     }
 }
@@ -392,7 +402,7 @@ void map_floor5_transition_cutscene(void)
 void map_action_script_floor5(void)
 {
     if (map_dialogue_just_started(map_runtime_state.events[KF_FLOOR5_WEAPON_TRANSFORM_EVENT].dialogue, floor5_weapon_transform_stage)) {
-        map_floor5_transition_cutscene();
+        map_floor5_weapon_transform_cutscene();
         map_floor_script(KF_FLOOR_5).floor5.weapon_transformed = KF_MAP_SCRIPT_SET;
     }
 }
@@ -537,7 +547,7 @@ static void map_interact_hinged_container(KfMapObject *object,
     item_index = KF_MAP_CONTAINER_ITEM_COUNT - 1;
     for (;;) {
         if (*item_id != KF_OBJECT_NONE) {
-            pickup_result = kf_enum_decode<KfMenuResult>(menu_enter_mode(KF_MENU_MODE_ITEM_PICKUP, *item_id));
+            pickup_result = menu_confirm_pickup(*item_id);
             switch (pickup_result) {
             case KF_MENU_RESULT_ACCEPTED:
                 *item_id = KF_OBJECT_NONE;
@@ -604,7 +614,7 @@ void map_interaction_dispatch(const VECTOR *position, SVECTOR *rotation)
     s32 index;
     s32 result;
     KfMenuResult pickup_result;
-    KfBool8 found_item;
+    bool found_item;
     KfMapEvent *event;
     KfMapObject *object;
     KfMapObjectDefinition *definition;
@@ -642,14 +652,14 @@ void map_interaction_dispatch(const VECTOR *position, SVECTOR *rotation)
                 map_event_advance_animation_blocking(event, KF_MAP_EVENT_ANIMATION_TALK_POSE, KF_MAP_EVENT_ANIMATION_TALK_STEP);
                 audio_play_map_sequence(MAP_SHOP_SEQUENCE_INDEX);
                 map_event_interact(event);
-                menu_enter_mode(KF_MENU_MODE_SHOP, kf_enum_decode<KfItemStockBank>(kf_enum_encode<u8>(event->character_id)));
+                menu_open_shop(kf_enum_decode<KfItemStockBank>(kf_enum_encode<u8>(event->character_id)));
                 audio_play_current_map_sequence();
                 map_event_advance_animation_blocking(event, KF_MAP_EVENT_ANIMATION_PHASE_MASK, KF_MAP_EVENT_ANIMATION_TALK_STEP);
                 map_finish_event_interaction(event);
                 break;
             case KF_MAP_EVENT_BEHAVIOR_ANIMATION_LOOP:
-                result = game_graphics_runtime.asset_registry_entries[
-                    event->model_index + KF_ASSET_MAP_EVENT_FIRST]->animation_clip_count;
+                result = game_graphics_runtime.asset_animations[
+                    event->model_index + KF_ASSET_MAP_EVENT_FIRST].clips.size();
                 map_event_advance_animation_blocking(event, KF_MAP_EVENT_ANIMATION_PHASE_MASK, KF_MAP_EVENT_ANIMATION_FINISH_STEP);
                 result = result < 2;
                 if (result == 0) {
@@ -696,7 +706,7 @@ void map_interaction_dispatch(const VECTOR *position, SVECTOR *rotation)
                 for (;;) {
                     if (*item_id != KF_OBJECT_NONE) {
                         found_item = true;
-                        pickup_result = kf_enum_decode<KfMenuResult>(menu_enter_mode(KF_MENU_MODE_ITEM_PICKUP, *item_id));
+                        pickup_result = menu_confirm_pickup(*item_id);
                         switch (pickup_result) {
                         case KF_MENU_RESULT_ACCEPTED:
                             *item_id = KF_OBJECT_NONE;
@@ -754,7 +764,7 @@ void map_interaction_dispatch(const VECTOR *position, SVECTOR *rotation)
                 continue;
 
             case KF_MAP_OBJECT_OP_ITEM_PICKUP:
-                pickup_result = kf_enum_decode<KfMenuResult>(menu_enter_mode(KF_MENU_MODE_ITEM_PICKUP, object->object_id));
+                pickup_result = menu_confirm_pickup(object->object_id);
                 switch (pickup_result) {
                 case KF_MENU_RESULT_ACCEPTED:
                     object->object_id = KF_OBJECT_NONE;
@@ -849,6 +859,6 @@ void map_scripts_reset_module_state(void)
 {
     kf::restore_initial_value<map_floor5_camera_path>();
     kf::restore_initial_value<map_floor1_sound_position>();
-    kf::restore_initial_value<map_reveal_light_matrix>();
+    kf::restore_initial_value<map_transfer_light_matrix>();
     kf::restore_initial_value<map_screen_image_path>();
 }

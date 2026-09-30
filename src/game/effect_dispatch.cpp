@@ -1,13 +1,15 @@
-#include <kf/lib/random.hpp>
-#include <kf/lib/null.h>
-
-#include <kf/lib/map_data.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/collision.h>
 #include <kf/game/effect.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/game.h>
+#include <kf/lib/map_data.h>
+#include <kf/lib/null.h>
+#include <kf/lib/random.h>
+
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 enum {
     EFFECT_ORBIT_RADIUS = 6500
@@ -95,9 +97,9 @@ enum {
     LONG_SWING_PROBE_LENGTH = 4900
 };
 
-SVECTOR effect_swing_probe_offsets[KF_EFFECT_SWING_PROBE_COUNT] = {
-    {0, SHORT_SWING_PROBE_LENGTH, 0, 0},
-    {0, LONG_SWING_PROBE_LENGTH, 0, 0},
+std::array<SVECTOR, KF_EFFECT_SWING_PROBE_COUNT> effect_swing_probe_offsets = {
+    SVECTOR{0, SHORT_SWING_PROBE_LENGTH, 0, 0},
+    SVECTOR{0, LONG_SWING_PROBE_LENGTH, 0, 0},
 };
 
 static void effect_begin_lightning_impact(KfEffectRecord *effect, const KfMagicRecord *magic)
@@ -127,16 +129,16 @@ static void effect_begin_lightning_impact(KfEffectRecord *effect, const KfMagicR
 static bool effect_handle_projectile_collision(KfEffectRecord *effect, KfMagicRecord *magic,
     KfEffectKind kind, u32 radius)
 {
-    u32 collision;
-    u16 collision_kind;
+    KfCollisionResult collision;
+    KfCollisionKind collision_kind;
     KfMagicRecord *impact_magic;
 
     collision = effect_map_collision(&effect->position, radius);
-    if (collision != KF_COLLISION_NONE) {
+    if (collision.kind != KfCollisionKind::None) {
         u16 impact_power;
 
         impact_magic = effect_state.current_magic;
-        collision_kind = collision >> KF_COLLISION_KIND_SHIFT;
+        collision_kind = collision.kind;
         if (kind == KF_MAGIC_LIGHTNING_BOLT) {
             effect_begin_lightning_impact(effect, magic);
             return true;
@@ -146,17 +148,17 @@ static bool effect_handle_projectile_collision(KfEffectRecord *effect, KfMagicRe
             audio_play_spatial_default_range(
                 &impact_magic->sounds[1], &effect->position, KF_AUDIO_MAX_VOLUME);
         }
-        if (collision_kind == (KF_COLLISION_ACTOR >> KF_COLLISION_KIND_SHIFT)) {
+        if (collision_kind == KfCollisionKind::Actor) {
             if (kind == KF_EFFECT_KIND_MAP_EMITTER_PROJECTILE || kind == KF_EFFECT_KIND_PHYSICAL_PROJECTILE || kind == KF_MAGIC_WIND_CUTTER) {
                 actor_apply_damage(
-                    (u16)collision, impact_power,
+                    collision.detail, impact_power,
                     impact_magic->damage_components[0],
                     impact_magic->damage_components[2],
                     impact_magic->damage_components[1],
                     0, 0, KF_ACTOR_DAMAGE_SCALE_ONE, effect->type);
             } else if (kind != KF_EFFECT_KIND_EMERGING_PROJECTILE) {
                 actor_apply_damage(
-                    (u16)collision, impact_power,
+                    collision.detail, impact_power,
                     0, 0, 0, impact_magic->damage_components[0],
                     impact_magic->damage_components[1],
                     KF_ACTOR_DAMAGE_SCALE_ONE, effect->type);
@@ -164,7 +166,7 @@ static bool effect_handle_projectile_collision(KfEffectRecord *effect, KfMagicRe
             if (kind == KF_MAGIC_WIND_CUTTER) {
                 return false;
             }
-        } else if (collision_kind == (KF_COLLISION_PLAYER >> KF_COLLISION_KIND_SHIFT)) {
+        } else if (collision_kind == KfCollisionKind::Player) {
             if (kind == KF_EFFECT_KIND_EMERGING_PROJECTILE || kind == KF_EFFECT_KIND_MAP_EMITTER_PROJECTILE || kind == KF_EFFECT_KIND_PHYSICAL_PROJECTILE) {
                 player_apply_damage(
                     impact_magic->damage_components[0],
@@ -423,7 +425,7 @@ void effect_update_dispatch(void)
 
     case KF_EFFECT_KIND_MOONLIGHT_PROJECTILE:
         if (kf_enum_encode<u8>(phase) < kf_enum_encode<u8>(KF_EFFECT_MOONLIGHT_TRAVEL_LAST) + 1) {
-            if (effect_map_collision(&effect->position, PROJECTILE_COLLISION_RADIUS) != KF_COLLISION_NONE) {
+            if (effect_map_collision(&effect->position, PROJECTILE_COLLISION_RADIUS).kind != KfCollisionKind::None) {
                 effect->animation_clip = KF_ANIMATION_CLIP_NONE;
                 effect->base_render_id.model = KF_EFFECT_MODEL_NONE;
                 effect->render_id.model = KF_EFFECT_MODEL_NONE;
@@ -462,18 +464,18 @@ void effect_update_dispatch(void)
 
     case KF_EFFECT_KIND_GROUND_TRAIL: {
         KfEffectRecord *linked_effect;
-        u32 collision;
-        u16 collision_kind;
+        KfCollisionResult collision;
+        KfCollisionKind collision_kind;
         u16 power;
 
         linked_effect = &effect_state.records[effect->control.parent_effect_index];
         collision = effect_map_collision(&effect->position, radius);
-        if (collision != KF_COLLISION_NONE) {
-            collision_kind = collision >> KF_COLLISION_KIND_SHIFT;
+        if (collision.kind != KfCollisionKind::None) {
+            collision_kind = collision.kind;
             power = effect_magic_power(effect);
-            if (collision_kind == (KF_COLLISION_ACTOR >> KF_COLLISION_KIND_SHIFT)) {
+            if (collision_kind == KfCollisionKind::Actor) {
                 actor_apply_damage(
-                    (u16)collision, power, 0, 0, 0,
+                    collision.detail, power, 0, 0, 0,
                     magic->damage_components[0], magic->damage_components[1],
                     KF_ACTOR_DAMAGE_SCALE_ONE, effect->type);
             }
@@ -483,6 +485,9 @@ void effect_update_dispatch(void)
             -(map_floor_height_grid.cells[effect->position.vz / KF_MAP_TILE_SIZE]
                                    [effect->position.vx / KF_MAP_TILE_SIZE] * KF_MAP_HEIGHT_STEP);
         switch (phase) {
+        default:
+            // Other phase values have no ground-trail transition.
+            break;
         case KF_EFFECT_GROUND_TRAIL_WAIT_FOR_PARENT:
             if (kf_enum_encode<u8>(linked_effect->phase) > kf_enum_encode<u8>(KF_EFFECT_MOONLIGHT_IMPACT_FIRST) - 1) {
                 effect->phase = KF_EFFECT_GROUND_TRAIL_SHRINK;
@@ -551,7 +556,7 @@ void effect_update_dispatch(void)
         effect->position += movement;
         effect->phase++;
         effect->rotation.vector.vz = (effect->rotation.vector.vz + HOMING_ROLL_STEP) & KF_ANGLE_WRAP_MASK;
-        if (effect_map_collision(&effect->position, radius) != KF_COLLISION_NONE) {
+        if (effect_map_collision(&effect->position, radius).kind != KfCollisionKind::None) {
             if (effect->base_render_id.model == KF_EFFECT_MODEL_HOMING_PROJECTILE_ALTERNATE) {
                 effect_pool_construct(
                     effect->id, effect->type, KF_EFFECT_KIND_RADIAL_BLAST_ALTERNATE,
@@ -633,6 +638,9 @@ void effect_update_dispatch(void)
             if (effect->control.frames_remaining != KF_EFFECT_GROUND_BRANCH_TIMER_DONE) {
                 if (effect->control.frames_remaining-- == 0) {
                     switch (effect->propagation.branch) {
+                    case KF_EFFECT_GROUND_BRANCH_LEAF:
+                        // A leaf emits no further branches.
+                        break;
                     case KF_EFFECT_GROUND_BRANCH_ROOT:
                         effect_spawn_ground_branch(
                             effect->id, effect, KF_ANGLE_QUARTER_TURN, KF_EFFECT_GROUND_BRANCH_QUARTER_TURN);
@@ -729,14 +737,15 @@ void effect_update_dispatch(void)
             effect->phase = scale_phase;
         } else if (kf_enum_encode<u8>(phase) < kf_enum_encode<u8>(KF_EFFECT_ACTOR_SPAWNER_TRAVEL_LAST) + 1) {
             VECTOR position;
+            KfCollisionResult collision;
 
             position.vx = effect->position.vx + effect->direction.vector.vx;
             position.vz = effect->position.vz + effect->direction.vector.vz;
             position.vy = effect->position.vy;
-            value = collision_query_world(
+            collision = collision_query_world(
                 position.vx, position.vy, position.vz, ACTOR_SPAWNER_COLLISION_RADIUS, 0,
                 KF_COLLISION_SKIP_MAP_OBJECTS | KF_COLLISION_SKIP_MAP_EVENTS);
-            if ((phase == KF_EFFECT_ACTOR_SPAWNER_TRAVEL_LAST && value != KF_COLLISION_NONE) || effect->control.frames_remaining == 0) {
+            if ((phase == KF_EFFECT_ACTOR_SPAWNER_TRAVEL_LAST && collision.kind != KfCollisionKind::None) || effect->control.frames_remaining == 0) {
                 effect->phase = KF_EFFECT_ACTOR_SPAWNER_WAIT_FIRST;
             } else {
                 effect->position.vx = position.vx;
@@ -788,11 +797,11 @@ void effect_update_dispatch(void)
     }
 
     case KF_EFFECT_KIND_SWINGING_HAZARD_SHORT:
-        effect_projectile_update_3d(&effect_swing_probe_offsets[KF_EFFECT_SWING_PROBE_SHORT], KF_EFFECT_SHORT_SWING_PHASE_LIMIT);
+        effect_update_swinging_hazard(&effect_swing_probe_offsets[KF_EFFECT_SWING_PROBE_SHORT], KF_EFFECT_SHORT_SWING_PHASE_LIMIT);
         break;
 
     case KF_EFFECT_KIND_SWINGING_HAZARD_LONG:
-        effect_projectile_update_3d(&effect_swing_probe_offsets[KF_EFFECT_SWING_PROBE_LONG], KF_EFFECT_LONG_SWING_PHASE_LIMIT);
+        effect_update_swinging_hazard(&effect_swing_probe_offsets[KF_EFFECT_SWING_PROBE_LONG], KF_EFFECT_LONG_SWING_PHASE_LIMIT);
         break;
 
     case KF_EFFECT_KIND_FLOOR_DEFORMATION: {
@@ -800,6 +809,9 @@ void effect_update_dispatch(void)
         s32 remaining;
 
         switch (phase) {
+        default:
+            // Only advance, hold and reverse drive floor deformation.
+            break;
         case KF_EFFECT_FLOOR_DEFORM_ADVANCE:
             remaining = effect->direction.words.x - 1;
             effect->direction.words.x = remaining;
@@ -843,7 +855,7 @@ void effect_update_dispatch(void)
     }
 
     case KF_EFFECT_KIND_ORBITING_PROJECTILE:
-        effect_projectile_update_2d(EFFECT_ORBIT_RADIUS, KF_EFFECT_ORBIT_PHASE_LIMIT);
+        effect_update_orbiting_projectile(EFFECT_ORBIT_RADIUS, KF_EFFECT_ORBIT_PHASE_LIMIT);
         break;
 
     default:

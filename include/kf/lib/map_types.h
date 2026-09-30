@@ -1,8 +1,8 @@
 #ifndef KF_MAP_TYPES_H
 #define KF_MAP_TYPES_H
 
-#include <kf/lib/types.h>
 #include <kf/lib/enum.h>
+#include <kf/lib/types.h>
 
 enum {
     KF_MAP_COLUMNS = 100,
@@ -182,4 +182,4 @@ typedef union KfMapOrientationGrid {
     u32 words[KF_MAP_GRID_WORD_COUNT];
 } KfMapOrientationGrid;
 
-#endif
+#endif // KF_MAP_TYPES_H

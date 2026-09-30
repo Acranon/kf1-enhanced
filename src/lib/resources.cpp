@@ -1,19 +1,29 @@
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
 #include <kf/lib/resources.h>
+#include <kf/platform/host.h>
+#include <kf/renderer/renderer.h>
 
-const u32 *resource_stream_copy_words(
-    u32 *destination, const u32 *source, std::size_t word_count)
+#include <cstring>
+
+void map_grids_load(KfResourceChunk chunk, KfMapAttributeGrid &attributes,
+    KfMapGrid &heights, KfMapOrientationGrid &orientations,
+    KfMapGrid &flags, KfMapCollisionGrid &collision)
 {
-    u32 *out = destination;
-
-    while (word_count-- != 0) {
-        *out++ = *source++;
-    }
-    return source;
+    const auto size = sizeof attributes + sizeof heights + sizeof orientations
+        + sizeof flags + sizeof collision;
+    if (chunk.size < size)
+        kf::host_fail("Truncated map grids");
+    const u8 *source = chunk.data;
+    auto copy = [&](auto &grid) {
+        std::memcpy(&grid, source, sizeof grid);
+        source += sizeof grid;
+    };
+    copy(attributes);
+    copy(heights);
+    copy(orientations);
+    copy(flags);
+    copy(collision);
 }
-
-#include <kf/renderer/renderer.hpp>
-#include <kf/platform/host.hpp>
 
 void tim_upload_images(const u8 *tim_data, std::size_t size)
 {

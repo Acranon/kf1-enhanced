@@ -1,6 +1,7 @@
-#include <kf/lib/map_data.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/collision.h>
 #include <kf/game/game.h>
+#include <kf/lib/map_data.h>
 
 s32 map_floor_height_for_cell_position(
     u16 cell_index, s32 point_x, s32 point_z)

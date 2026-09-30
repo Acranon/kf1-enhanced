@@ -1,8 +1,8 @@
 #ifndef KF_PLAYER_STATUS_H
 #define KF_PLAYER_STATUS_H
 
-#include <kf/lib/types.h>
 #include <kf/lib/enum.h>
+#include <kf/lib/types.h>
 
 enum class KfPlayerStatusFlags : u16 {
     KF_PLAYER_STATUS_NONE = 0,
@@ -25,4 +25,4 @@ constexpr KfPlayerStatusFlags operator|(KfPlayerStatusFlags lhs, KfPlayerStatusF
     inline KfPlayerStatusFlags& operator&=(KfPlayerStatusFlags& lhs, KfPlayerStatusFlags rhs) { return lhs = lhs & rhs; }
     inline KfPlayerStatusFlags& operator^=(KfPlayerStatusFlags& lhs, KfPlayerStatusFlags rhs) { return lhs = lhs ^ rhs; }
 
-#endif
+#endif // KF_PLAYER_STATUS_H

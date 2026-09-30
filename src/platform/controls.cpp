@@ -1,4 +1,5 @@
-#include <kf/platform/controls.hpp>
+#include <kf/platform/controls.h>
+
 #include <cmath>
 
 namespace kf {
@@ -28,7 +29,7 @@ bool input_bind(InputState *input, Control control, Action action) {
             return true;
         }
     }
-    if (input->binding_count == sizeof input->bindings / sizeof input->bindings[0])
+    if (input->binding_count == input->bindings.size())
         return false;
     input->bindings[input->binding_count++] = {control, action, false};
     return true;

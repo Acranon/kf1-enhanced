@@ -1,4 +1,6 @@
-#pragma once
+#ifndef KF_LIB_PLAYER_STATS_TYPES_H
+#define KF_LIB_PLAYER_STATS_TYPES_H
+
 #include <kf/lib/types.h>
 
 enum class KfWeaponAttackCharge : u8 {
@@ -39,3 +41,5 @@ typedef struct KfPlayerAttackChargeState {
     u16 current;
     u16 committed;
 } KfPlayerAttackChargeState;
+
+#endif // KF_LIB_PLAYER_STATS_TYPES_H

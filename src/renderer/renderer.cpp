@@ -1,11 +1,14 @@
-#include <kf/renderer/renderer.hpp>
+#include <kf/renderer/renderer.h>
+
 #include <GLES3/gl3.h>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <limits>
+#include <new>
 #include <vector>
 
 namespace kf {
@@ -19,7 +22,7 @@ constexpr GLint shader_texture_raw = 2;
 // Triangles are backend-private: original producers submit whole faces, which
 // are sorted before this representation is constructed.
 struct DrawTriangle {
-    Vertex vertices[3];
+    std::array<Vertex, 3> vertices;
     u32 material;
     BlendMode blend;
     SurfaceKind surface;
@@ -395,7 +398,7 @@ static int render_shadow_maps(Renderer *renderer, const DrawList *draws) {
     return lights;
 }
 
-bool renderer_init(Renderer *renderer, char *error, std::size_t size) {
+bool renderer_init(Renderer *renderer, char *error, std::size_t size) try {
     const auto vertex = shader(GL_VERTEX_SHADER, R"(#version 300 es
 layout(location=0) in vec2 position;
 layout(location=1) in vec2 texcoord;
@@ -725,8 +728,7 @@ void main() {
         renderer_release(renderer);
         return false;
     }
-    u8 white[] = {color8_max, color8_max, color8_max, color8_max};
-    const Image solid{1, 1, {white, sizeof white, sizeof white}};
+    const Image solid{1, 1, {color8_max, color8_max, color8_max, color8_max}};
     renderer->white_texture = renderer_upload(&solid);
     if (!renderer->white_texture) {
         std::snprintf(error, size, "Cannot create solid-color material.");
@@ -738,6 +740,10 @@ void main() {
     glUniform1i(glGetUniformLocation(renderer->program, "image"), 0);
     glUniform1i(glGetUniformLocation(renderer->program, "backdrop"), 1);
     return glGetError() == GL_NO_ERROR;
+} catch (const std::bad_alloc &) {
+    std::snprintf(error, size, "Cannot allocate renderer resources.");
+    renderer_release(renderer);
+    return false;
 }
 static GLuint create_target_texture(int width, int height) {
     GLuint texture = 0;
@@ -863,7 +869,7 @@ TextureId renderer_upload(const Image *image) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(image->width),
                  static_cast<GLsizei>(image->height), 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                 image->rgba.data);
+                 image->rgba.data());
     if (glGetError() != GL_NO_ERROR) {
         glDeleteTextures(1, &texture);
         return 0;
@@ -1010,7 +1016,7 @@ static void renderer_draw(Renderer *renderer, const DrawList *draws, int width, 
         if (render_texture_filter != 0) {
             glUniform4fv(uv_bounds, 1, draw->uv_bounds);
         }
-        glBufferData(GL_ARRAY_BUFFER, sizeof draw->vertices, draw->vertices, GL_STREAM_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof draw->vertices, draw->vertices.data(), GL_STREAM_DRAW);
         glUniform1i(texture_mode, draw->surface == SurfaceKind::Solid ? shader_texture_solid :
             draw->color_mode == TextureColorMode::Modulated ? shader_texture_modulated : shader_texture_raw);
         glUniform1i(dither_enabled, draw->dither ? 1 : 0);
@@ -1171,14 +1177,12 @@ struct FaceOrder {
     std::size_t index;
     s32 depth;
 };
-static int compare_faces(const void *lhs, const void *rhs) {
-    const auto &a = *static_cast<const FaceOrder *>(lhs);
-    const auto &b = *static_cast<const FaceOrder *>(rhs);
+static bool compare_faces(const FaceOrder &a, const FaceOrder &b) {
     if (a.depth != b.depth)
-        return a.depth > b.depth ? -1 : 1;
+        return a.depth > b.depth;
     // Original equal-depth insertion was LIFO. Order whole faces before splitting
     // quads, so another face can never be interleaved between their triangles.
-    return a.index == b.index ? 0 : a.index > b.index ? -1 : 1;
+    return a.index > b.index;
 }
 
 static unsigned append_face_triangle(DrawTriangle *triangles, const DrawFace &face,
@@ -1238,16 +1242,21 @@ static void dump_faces(const FaceList *faces) {
     }
 }
 
-bool renderer_draw_faces(Renderer *renderer, const FaceList *faces, int width, int height) {
+bool renderer_draw_faces(Renderer *renderer, const FaceList *faces, int width, int height) try {
     dump_faces(faces);
     const auto count = faces->count;
     if ((count && !faces->faces) || count > std::numeric_limits<u32>::max() ||
         count > std::numeric_limits<std::size_t>::max() / 2 / sizeof(DrawTriangle))
         return false;
-    auto *order = static_cast<FaceOrder *>(std::malloc(count * sizeof(FaceOrder)));
-    auto *triangles = static_cast<DrawTriangle *>(std::malloc(count * 2 * sizeof(DrawTriangle)));
-    auto *textures = static_cast<TextureId *>(std::malloc(count * sizeof(TextureId)));
-    bool good = !count || (order && triangles && textures);
+    std::vector<FaceOrder> order;
+    std::vector<DrawTriangle> triangles;
+    std::vector<TextureId> textures;
+    if (count > order.max_size() || count > triangles.max_size() / 2 || count > textures.max_size())
+        return false;
+    order.resize(count);
+    triangles.resize(count * 2);
+    textures.resize(count);
+    bool good = true;
     std::size_t triangle_count = 0;
     // The frame starts with an explicit blend policy; previous-frame texture
     // selection must not change a leading untextured translucent face.
@@ -1255,7 +1264,7 @@ bool renderer_draw_faces(Renderer *renderer, const FaceList *faces, int width, i
     if (good && count) {
         for (std::size_t i = 0; i < count; ++i)
             order[i] = {i, faces->faces[i].depth};
-        std::qsort(order, count, sizeof(FaceOrder), compare_faces);
+        std::sort(order.begin(), order.end(), compare_faces);
         for (std::size_t i = 0; i < count; ++i) {
             const auto &face = faces->faces[order[i].index];
             if (face.shape != FaceShape::Triangle && face.shape != FaceShape::Quad) {
@@ -1274,20 +1283,19 @@ bool renderer_draw_faces(Renderer *renderer, const FaceList *faces, int width, i
             const auto blend = face.transparency == FaceTransparency::Blend ? preceding_blend : BlendMode::opaque;
             // Sort original whole faces first. All output from each face
             // stays adjacent, preserving equal-depth LIFO and blending order.
-            triangle_count += append_face_triangle(triangles + triangle_count, face,
+            triangle_count += append_face_triangle(triangles.data() + triangle_count, face,
                 0, 1, 2, static_cast<u32>(i), blend);
             if (face.shape == FaceShape::Quad)
-                triangle_count += append_face_triangle(triangles + triangle_count, face,
+                triangle_count += append_face_triangle(triangles.data() + triangle_count, face,
                     1, 3, 2, static_cast<u32>(i), blend);
         }
     }
     if (good) {
-        const DrawList draws{triangles, triangle_count, textures, count, faces->style};
+        const DrawList draws{triangles.data(), triangle_count, textures.data(), count, faces->style};
         renderer_draw(renderer, &draws, width, height);
     }
-    std::free(order);
-    std::free(triangles);
-    std::free(textures);
     return good;
+} catch (const std::bad_alloc &) {
+    return false;
 }
 } // namespace kf

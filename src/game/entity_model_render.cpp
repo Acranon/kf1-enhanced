@@ -1,10 +1,10 @@
-#include <kf/lib/null.h>
-#include <kf/game/graphics.h>
-
-#include <kf/lib/geometry_types.h>
-#include <kf/game/render.h>
-#include <kf/lib/math.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/asset.h>
+#include <kf/game/graphics.h>
+#include <kf/game/render.h>
+#include <kf/lib/geometry_types.h>
+#include <kf/lib/math.h>
+#include <kf/lib/null.h>
 
 enum {
     ACTOR_MODEL_ASSET_MASK = 0xf,
@@ -16,7 +16,7 @@ enum {
 
 void render_actor(KfActor *actor)
 {
-    SVECTOR screen;
+    SVECTOR relative_position;
     MATRIX rot_y;
     MATRIX model;
     MATRIX light;
@@ -24,11 +24,11 @@ void render_actor(KfActor *actor)
     u8 descriptor;
     u16 asset;
 
-    screen = VECTOR{
+    relative_position = VECTOR{
         actor->position.vx - game_graphics_runtime.render_state.view_position.vx,
         actor->position.vy - game_graphics_runtime.render_state.view_position.vy,
         actor->position.vz - game_graphics_runtime.render_state.view_position.vz}.narrowed();
-    kf::render_place_model(model, game_graphics_runtime.render_state.view_matrix, screen);
+    kf::render_place_model(model, game_graphics_runtime.render_state.view_matrix, relative_position);
     matrix_set_rotation_x(actor->rotation.angles.x, &model);
     matrix_set_rotation_y(-actor->rotation.angles.y, &rot_y);
     kf::matrix_multiply_rotation(rot_y, model, model);
@@ -39,9 +39,9 @@ void render_actor(KfActor *actor)
     asset = descriptor & ACTOR_MODEL_ASSET_MASK;
     asset_registry_select(asset);
     object = tmd_get_object(tmd_context(), 0);
-    if (render_bind_animated_instance(
-            &actor->animation_cache, asset, actor->animation_id,
-            actor->animation_phase, object->vertex_count) == NULL) {
+    if (!render_bind_instance_vertices(
+            &actor->animation_cache, asset, actor->animation_clip,
+            actor->animation_phase, object->vertex_count)) {
         tmd_select_object_vertices(tmd_context(), 0);
         tmd_project_vertices(tmd_get_object(tmd_context(), 0)->vertex_count, &model, game_graphics_runtime.render_state.projection);
     } else {
@@ -53,24 +53,24 @@ void render_actor(KfActor *actor)
         render_enqueue_tmd(0, 0, &light);
     } else {
         game_graphics_runtime.active_render_material = game_graphics_runtime.effect5_materials[descriptor];
-        render_enqueue_model(0, 0, &light);
+        render_enqueue_tmd_retextured(0, 0, &light);
     }
 }
 
 void render_map_object(KfMapObject *object)
 {
-    SVECTOR screen;
+    SVECTOR relative_position;
     MATRIX rot_x;
     MATRIX model;
     MATRIX light;
-    KfEnumStorage<KfObjectId, u16> id;
+    KfObjectId id;
     s16 depth;
 
-    screen = VECTOR{
+    relative_position = VECTOR{
         object->position.vx - game_graphics_runtime.render_state.view_position.vx,
         object->position.vy - game_graphics_runtime.render_state.view_position.vy,
         object->position.vz - game_graphics_runtime.render_state.view_position.vz}.narrowed();
-    kf::render_place_model(model, game_graphics_runtime.render_state.view_matrix, screen);
+    kf::render_place_model(model, game_graphics_runtime.render_state.view_matrix, relative_position);
     matrix_set_rotation_x(object->rotation.angles.x, &rot_x);
     matrix_set_rotation_y(object->rotation.angles.y, &model);
     kf::matrix_multiply_rotation(model, rot_x, model);

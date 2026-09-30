@@ -1,12 +1,12 @@
 #ifndef KF_GAME_EQUIPMENT_H
 #define KF_GAME_EQUIPMENT_H
 
-#include <kf/lib/types.h>
 #include <kf/game/combat.h>
 #include <kf/lib/enum.h>
+#include <kf/lib/equipment_types.h>
 #include <kf/lib/item.h>
 #include <kf/lib/math.h>
-#include <kf/lib/equipment_types.h>
+#include <kf/lib/types.h>
 
 typedef struct KfArmorRecord {
     u16 unknown_00;
@@ -50,4 +50,4 @@ extern void weapon_records_load_and_mirror_angles(
     const KfWeaponTable *source);
 extern void armor_records_load(const KfArmorTable *source);
 
-#endif
+#endif // KF_GAME_EQUIPMENT_H

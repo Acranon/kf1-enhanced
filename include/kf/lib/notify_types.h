@@ -1,8 +1,8 @@
 #ifndef KF_NOTIFY_TYPES_H
 #define KF_NOTIFY_TYPES_H
 
-#include <kf/lib/types.h>
 #include <kf/lib/enum.h>
+#include <kf/lib/types.h>
 
 enum class KfNotificationId : u8 {
     KF_NOTIFICATION_LEVEL_UP = 0,
@@ -48,4 +48,4 @@ enum class KfNotificationPhase : u8 {
     KF_NOTIFICATION_ROTATE_OUT = 3
 }; using enum KfNotificationPhase;
 
-#endif
+#endif // KF_NOTIFY_TYPES_H

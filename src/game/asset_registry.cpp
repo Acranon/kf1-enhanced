@@ -1,7 +1,10 @@
-#include <kf/game/graphics.h>
-
+#include <kf/platform/prelude.h>
 #include <kf/game/asset.h>
+#include <kf/game/graphics.h>
 #include <kf/game/render.h>
+
+#include <new>
+#include <stdexcept>
 
 void asset_registry_load_tmd_archive(u16 first_asset_id, u8 *archive, std::size_t size)
 {
@@ -22,28 +25,39 @@ void asset_registry_load_tmd_archive(u16 first_asset_id, u8 *archive, std::size_
     }
 }
 
-void asset_registry_set(u16 index, void *data, std::size_t size)
+void asset_registry_set(u16 asset_id, void *data, std::size_t size) try
 {
-    static_assert(sizeof(KfAssetHeader) == 20);
-    if (index >= KF_ASSET_REGISTRY_KNOWN_ENTRIES || !data || size < sizeof(KfAssetHeader))
+    KfAssetInfo info;
+    if (asset_id >= KF_ASSET_REGISTRY_KNOWN_ENTRIES ||
+        kf_asset_info({static_cast<const u8 *>(data), size}, info) != KF_CODEC_OK)
         kf::host_fail("Invalid model asset header");
     auto *bytes = static_cast<u8 *>(data);
-    const std::size_t asset_size = tmd_read_word(bytes);
-    const std::size_t tmd_offset = tmd_read_word(bytes + 8);
-    if (asset_size < sizeof(KfAssetHeader) || asset_size > size ||
-        tmd_offset < sizeof(KfAssetHeader) || tmd_offset > asset_size ||
-        reinterpret_cast<std::uintptr_t>(data) % alignof(KfAssetHeader))
-        kf::host_fail("Invalid model asset extent or alignment");
-    const auto tmd = tmd_resource_view(bytes + tmd_offset, asset_size - tmd_offset);
-    game_graphics_runtime.asset_registry_entries[index] = static_cast<KfAssetHeader *>(data);
-    game_graphics_runtime.asset_registry_tmds[index] = tmd;
-    asset_registry_select(index);
+    const auto tmd = tmd_resource_view(bytes + info.tmd_offset, info.encoded_bytes - info.tmd_offset);
+    game_graphics_runtime.asset_registry_tmds[asset_id] = tmd;
+    asset_registry_select(asset_id);
+    KfAnimationData animation;
+    if (info.clip_count) {
+        animation.vertex_count = tmd_read_object(tmd_context(), 0).vertex_count;
+        if (animation.vertex_count > KF_PROJECTED_VERTEX_CAPACITY)
+            kf::host_fail("Animated model exceeds vertex capacity.");
+        tmd_select_object_vertices(tmd_context(), 0);
+    }
+    if (kf_animation_decode({bytes, info.encoded_bytes}, animation.vertex_count, animation) != KF_CODEC_OK)
+        kf::host_fail("Cannot decode model animation resource.");
+    for (auto &record : game_graphics_runtime.animation_cache_records)
+        if (record.state != KF_ANIMATION_CACHE_FREE && record.asset_index == asset_id)
+            animation_cache_release(&record);
+    game_graphics_runtime.asset_animations[asset_id] = std::move(animation);
+} catch (const std::bad_alloc &) {
+    kf::host_fail("Cannot allocate decoded animation data.");
+} catch (const std::length_error &) {
+    kf::host_fail("Decoded animation exceeds container capacity.");
 }
 
-void asset_registry_select(u16 index)
+void asset_registry_select(u16 asset_id)
 {
-    if (index >= KF_ASSET_REGISTRY_KNOWN_ENTRIES ||
-        !game_graphics_runtime.asset_registry_tmds[index].data)
+    if (asset_id >= KF_ASSET_REGISTRY_KNOWN_ENTRIES ||
+        !game_graphics_runtime.asset_registry_tmds[asset_id].data)
         kf::host_fail("Unregistered model asset");
-    game_graphics_runtime.tmd_state.current_asset = game_graphics_runtime.asset_registry_tmds[index];
+    game_graphics_runtime.tmd_state.current_tmd = game_graphics_runtime.asset_registry_tmds[asset_id];
 }

@@ -19,4 +19,4 @@ inline KfMapAttribute map_attribute_at_cell(s32 x, s32 z)
     return map_cell_attribute_grid.cells[z][x];
 }
 
-#endif
+#endif // KF_MAP_DATA_H

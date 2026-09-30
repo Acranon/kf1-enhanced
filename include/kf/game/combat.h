@@ -15,4 +15,4 @@ enum {
     KF_DAMAGE_SUBUNITS_PER_HP = 10
 };
 
-#endif
+#endif // KF_COMBAT_H

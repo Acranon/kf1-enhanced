@@ -4,6 +4,8 @@
 #include <kf/game/render.h>
 #include <kf/lib/notify_types.h>
 
+#include <array>
+
 enum {
     KF_NOTIFICATION_CAPACITY = 8,
     KF_NOTIFICATION_SPRITE_COUNT = 6,
@@ -31,12 +33,12 @@ typedef struct KfNotificationControl {
 } KfNotificationControl;
 
 typedef struct KfNotificationState {
-    u16 message_payloads[KF_NOTIFICATION_CAPACITY];
+    std::array<u16, KF_NOTIFICATION_CAPACITY> message_payloads;
     KfNotificationControl control;
 } KfNotificationState;
 
-extern KfNotificationSprite notification_sprites[KF_NOTIFICATION_SPRITE_COUNT];
+extern std::array<KfNotificationSprite, KF_NOTIFICATION_SPRITE_COUNT> notification_sprites;
 extern void notify_enqueue(KfNotificationArgument message_id, ...);
 extern void notify_effect_update(void);
 
-#endif
+#endif // KF_NOTIFY_H

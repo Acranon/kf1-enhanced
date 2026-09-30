@@ -1,10 +1,10 @@
-#pragma once
+#ifndef KF_LIB_MENU_TYPES_H
+#define KF_LIB_MENU_TYPES_H
+
 #include <kf/lib/types.h>
 
 enum class KfMenuResult : s32 {
     KF_MENU_RESULT_PENDING = -99,
-    KF_MENU_RESULT_GAME_LOADED = -3,
-    KF_MENU_RESULT_RETURN_TO_INTRO = -2,
     KF_MENU_RESULT_CANCELLED = -1,
     KF_MENU_RESULT_ACCEPTED = 0,
     KF_MENU_RESULT_DECLINED = 1,
@@ -20,3 +20,5 @@ enum class KfMenuConfirmChoice : s32 {
     KF_MENU_CHOICE_ACCEPT = 0,
     KF_MENU_CHOICE_DECLINE = 1
 }; using enum KfMenuConfirmChoice;
+
+#endif // KF_LIB_MENU_TYPES_H

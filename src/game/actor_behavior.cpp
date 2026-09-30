@@ -1,15 +1,17 @@
-#include <kf/game/audio.h>
-#include <kf/lib/random.hpp>
-#include <kf/lib/bool.h>
-
-#include <kf/lib/map_data.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/actor.h>
+#include <kf/game/audio.h>
 #include <kf/game/collision.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/game.h>
-#include <kf/platform/input.hpp>
+#include <kf/lib/map_data.h>
+#include <kf/lib/random.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <kf/platform/input.h>
+
 
 enum {
     ACTOR_ACTIVATION_RANGE = 28000,
@@ -117,7 +119,7 @@ static KfActorAction actor_choose_movement_action(const KfActor *actor,
     const KfActorDefinition *definition, KfActorAction action,
     s32 player_distance, s32 awareness, s32 near_range)
 {
-    KfBool32 recently_active;
+    bool recently_active;
 
     recently_active = action == KF_ACTOR_ACTION_RETREAT
         || action == KF_ACTOR_ACTION_MELEE_ATTACK
@@ -189,7 +191,7 @@ void actor_select_next_action(s32 player_distance)
     near_range = definition->pursuit_distance_scale << ACTOR_PURSUIT_DISTANCE_SHIFT;
     awareness = definition->awareness_distance;
     if (definition->action_animations[KF_ACTOR_ANIM_SLOT_MULTI_HIT_ATTACK] != KF_ANIMATION_CLIP_NONE
-        && actor_try_select_facing_action(KF_ACTOR_ACTION_MULTI_HIT_ATTACK, player_distance, ACTOR_MULTI_HIT_SELECTION_WEIGHT)
+        && actor_try_select_multi_hit_action(KF_ACTOR_ACTION_MULTI_HIT_ATTACK, player_distance, ACTOR_MULTI_HIT_SELECTION_WEIGHT)
             != KF_ACTOR_ACTION_NONE) {
         chosen = KF_ACTOR_ACTION_MULTI_HIT_ATTACK;
     } else if (definition->action_animations[KF_ACTOR_ANIM_SLOT_JUMP_ATTACK] != KF_ANIMATION_CLIP_NONE
@@ -281,6 +283,8 @@ void actor_update_awareness(void)
     KfActorSlotState spawn_policy;
 
     switch (actor->lifecycle) {
+    case KF_ACTOR_LIFECYCLE_DISABLED:
+        break;
     case KF_ACTOR_LIFECYCLE_DORMANT:
         distance = actor_player_distance(actor, ACTOR_ACTIVATION_RANGE);
         if (distance == -1) {
@@ -340,8 +344,8 @@ static KfActorMoveResult actor_handle_blocked_movement(
                     target.vz,
                     definition->collision_radius,
                     definition->collision_height,
-                    ACTOR_WALK_COLLISION_FLAGS)
-                == KF_COLLISION_NONE) {
+                    ACTOR_WALK_COLLISION_FLAGS).kind
+                == KfCollisionKind::None) {
                 if (delta->z >= 0) {
                     actor->movement_yaw = KF_ANGLE_HALF_TURN;
                 } else {
@@ -356,8 +360,8 @@ static KfActorMoveResult actor_handle_blocked_movement(
                            actor->position.vz,
                            definition->collision_radius,
                            definition->collision_height,
-                           ACTOR_WALK_COLLISION_FLAGS)
-                       == KF_COLLISION_NONE) {
+                           ACTOR_WALK_COLLISION_FLAGS).kind
+                       == KfCollisionKind::None) {
                 if (delta->x < 0) {
                     actor->movement_yaw = KF_ANGLE_QUARTER_TURN;
                 } else {
@@ -382,7 +386,7 @@ KfActorMoveResult actor_move_xz_with_collision(const struct KfVecXZs *delta, KfA
     KfActor *actor = actor_state.current;
     KfActorDefinition *definition = actor_state.current_definition;
     VECTOR target;
-    s32 result;
+    KfCollisionResult result;
     s32 drop;
     s32 threshold;
 
@@ -395,8 +399,8 @@ KfActorMoveResult actor_move_xz_with_collision(const struct KfVecXZs *delta, KfA
         definition->collision_radius,
         definition->collision_height,
         ACTOR_WALK_COLLISION_FLAGS);
-    if (result != KF_COLLISION_NONE
-        && (result != KF_COLLISION_BELOW_FLOOR || actor->vertical_state == KF_ACTOR_VERTICAL_LONG_DROP)) {
+    if (result.kind != KfCollisionKind::None
+        && (result.kind != KfCollisionKind::BelowFloor || actor->vertical_state == KF_ACTOR_VERTICAL_LONG_DROP)) {
         return actor_handle_blocked_movement(actor, definition, delta, target, collision_policy);
     }
     drop = target.vy - map_floor_height_at_position(&target);
@@ -489,6 +493,9 @@ void actor_spawn_action_effect(KfActorEffectCode effect_code, KfActorEffectSlot 
     effect_code &= KF_ACTOR_EFFECT_KIND_MASK;
     for (i = 0; i < repeat; i++) {
         switch (actor_effect_kind_from_payload(effect_code)) {
+        default:
+            // Other effect kinds have no actor-launch recipe here.
+            break;
         case KF_MAGIC_FIRE_BALL:
         case KF_MAGIC_WIND_CUTTER:
         case KF_MAGIC_LIGHT_NEEDLE:
@@ -615,7 +622,7 @@ void actor_apply_horizontal_movement(void)
     KfActor *actor = actor_state.current;
     KfActorDefinition *definition;
     VECTOR target;
-    s32 result;
+    KfCollisionResult result;
 
     target.vx = actor->movement_x + actor->position.vx;
     target.vz = actor->movement_z + actor->position.vz;
@@ -627,8 +634,8 @@ void actor_apply_horizontal_movement(void)
         definition->collision_radius,
         definition->collision_height,
         ACTOR_VELOCITY_COLLISION_FLAGS);
-    if (result != KF_COLLISION_NONE) {
-        if ((result >> KF_COLLISION_KIND_SHIFT) != (KF_COLLISION_PLAYER >> KF_COLLISION_KIND_SHIFT)) {
+    if (result.kind != KfCollisionKind::None) {
+        if (result.kind != KfCollisionKind::Player) {
             actor->movement_x = -actor->movement_x >> 1;
             actor->movement_z = -actor->movement_z >> 1;
         } else {
@@ -651,7 +658,7 @@ void actor_update_effect_action(KfActorEffectSlot effect_slot)
 
     if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
         actor->action_progress = KF_ACTOR_PROGRESS_LOCKED;
-        actor->animation_id = definition->action_animations[index];
+        actor->animation_clip = definition->action_animations[index];
         actor->animation_phase = 0;
     }
     actor_advance_animation_clamped(actor, definition->action_animation_steps[index]);
@@ -669,40 +676,28 @@ void actor_apply_random_movement(s16 step, s16 limit)
     KfActor *actor = actor_state.current;
     KfActorDefinition *definition = actor_state.current_definition;
     VECTOR target;
-    s32 result;
+    KfCollisionResult result;
 
     if (kf::random_next() < (kf::random_max + 1) / 2) {
         actor->movement_x += step;
-        if (actor->movement_x > limit) {
-            actor->movement_x = limit;
-        }
+        actor->movement_x = std::min<s32>(actor->movement_x, limit);
     } else {
         actor->movement_x -= step;
-        if (actor->movement_x < -limit) {
-            actor->movement_x = -limit;
-        }
+        actor->movement_x = std::max<s32>(actor->movement_x, -limit);
     }
     if (kf::random_next() < (kf::random_max + 1) / 2) {
         actor->movement_z += step;
-        if (actor->movement_z > limit) {
-            actor->movement_z = limit;
-        }
+        actor->movement_z = std::min<s32>(actor->movement_z, limit);
     } else {
         actor->movement_z -= step;
-        if (actor->movement_z < -limit) {
-            actor->movement_z = -limit;
-        }
+        actor->movement_z = std::max<s32>(actor->movement_z, -limit);
     }
     if (kf::random_next() < (kf::random_max + 1) / 2) {
         actor->movement_y += step;
-        if (actor->movement_y > limit) {
-            actor->movement_y = limit;
-        }
+        actor->movement_y = std::min<s32>(actor->movement_y, limit);
     } else {
         actor->movement_y -= step;
-        if (actor->movement_y < -limit) {
-            actor->movement_y = -limit;
-        }
+        actor->movement_y = std::max<s32>(actor->movement_y, -limit);
     }
     target.vx = actor->movement_x + actor->position.vx;
     target.vz = actor->movement_z + actor->position.vz;
@@ -714,7 +709,7 @@ void actor_apply_random_movement(s16 step, s16 limit)
         definition->collision_radius,
         definition->collision_height,
         ACTOR_VELOCITY_COLLISION_FLAGS);
-    if (result == KF_COLLISION_NONE) {
+    if (result.kind == KfCollisionKind::None) {
         actor->position = target;
     } else {
         actor->action_progress = KF_ACTOR_PROGRESS_DRIFT_COLLIDED;
@@ -725,7 +720,7 @@ void actor_apply_random_movement(s16 step, s16 limit)
             definition->collision_radius,
             definition->collision_height,
             ACTOR_VELOCITY_COLLISION_FLAGS);
-        if (result != KF_COLLISION_NONE) {
+        if (result.kind != KfCollisionKind::None) {
             actor->movement_x = -actor->movement_x;
         } else if (collision_query_world(
                        actor->position.vx,
@@ -733,8 +728,8 @@ void actor_apply_random_movement(s16 step, s16 limit)
                        actor->position.vz,
                        definition->collision_radius,
                        definition->collision_height,
-                       ACTOR_VELOCITY_COLLISION_FLAGS)
-                   != KF_COLLISION_NONE) {
+                       ACTOR_VELOCITY_COLLISION_FLAGS).kind
+                   != KfCollisionKind::None) {
             actor->movement_y = -actor->movement_y;
         }
         if (collision_query_world(
@@ -743,8 +738,8 @@ void actor_apply_random_movement(s16 step, s16 limit)
                 target.vz,
                 definition->collision_radius,
                 definition->collision_height,
-                ACTOR_VELOCITY_COLLISION_FLAGS)
-            != KF_COLLISION_NONE) {
+                ACTOR_VELOCITY_COLLISION_FLAGS).kind
+            != KfCollisionKind::None) {
             actor->movement_z = -actor->movement_z;
         }
     }
@@ -792,8 +787,8 @@ static void actor_update_pursuit(KfActor *actor, const KfActorDefinition *defini
     switch (actor->action_progress) {
     case KF_ACTOR_PROGRESS_INIT:
         actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-        if (actor->animation_id != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
+        if (actor->animation_clip != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
             actor->animation_phase = 0;
         }
         actor->movement_yaw = actor_bearing_to_player(actor);
@@ -843,7 +838,7 @@ static void actor_update_vertical_motion(KfActor *actor, const KfActorDefinition
 {
     s32 floor_height;
     s32 next_y;
-    s32 hit;
+    KfCollisionResult hit;
 
     switch (actor->vertical_state) {
     case KF_ACTOR_VERTICAL_NONE:
@@ -876,25 +871,20 @@ static void actor_update_vertical_motion(KfActor *actor, const KfActorDefinition
             definition->collision_radius,
             definition->collision_height,
             ACTOR_VELOCITY_COLLISION_FLAGS);
-        if (hit == KF_COLLISION_NONE) {
+        if (hit.kind == KfCollisionKind::None) {
             actor_apply_fall_step(actor, next_y);
             break;
         }
-        if ((hit >> KF_COLLISION_KIND_SHIFT) == (KF_COLLISION_PLAYER >> KF_COLLISION_KIND_SHIFT)) {
+        if (hit.kind == KfCollisionKind::Player) {
             player_apply_damage(0, ACTOR_JUMP_CONTACT_STRIKING_DAMAGE, 0, KF_PLAYER_STATUS_NONE, 0, 0, KF_FIXED12_ONE, KF_PLAYER_DAMAGE_MULTIPLIER_ONE);
             actor_bounce_from_jump(actor);
-        } else if ((hit >> KF_COLLISION_KIND_SHIFT) == (KF_COLLISION_TERRAIN >> KF_COLLISION_KIND_SHIFT)) {
-            switch (hit & KF_COLLISION_DETAIL_MASK) {
-            case KF_COLLISION_DETAIL_BELOW_FLOOR:
-                floor_height = map_floor_height_at_position(&actor->position);
-                actor_land(actor, floor_height);
-                break;
-            case KF_COLLISION_DETAIL_CEILING:
-                actor->vertical_state = KF_ACTOR_VERTICAL_JUMP_ATTACK;
-                actor->vertical_velocity = ACTOR_JUMP_CEILING_VELOCITY_Y;
-                break;
-            }
-        } else if ((hit >> KF_COLLISION_KIND_SHIFT) == (KF_COLLISION_ACTOR >> KF_COLLISION_KIND_SHIFT)) {
+        } else if (hit.kind == KfCollisionKind::BelowFloor) {
+            floor_height = map_floor_height_at_position(&actor->position);
+            actor_land(actor, floor_height);
+        } else if (hit.kind == KfCollisionKind::Ceiling) {
+            actor->vertical_state = KF_ACTOR_VERTICAL_JUMP_ATTACK;
+            actor->vertical_velocity = ACTOR_JUMP_CEILING_VELOCITY_Y;
+        } else if (hit.kind == KfCollisionKind::Actor) {
             actor_bounce_from_jump(actor);
         }
         break;
@@ -907,16 +897,19 @@ void actor_update_current_action(void)
     KfActorDefinition *definition = actor_state.current_definition;
     struct KfVecXZs direction;
     VECTOR target;
-    s32 result;
-    u16 debris;
+    KfCollisionResult result;
+    u16 gold_amount;
     KfMapAttribute attribute;
 
     collision_adjust_cell_occupancy(actor->cell_x, actor->cell_z, -1);
     switch (actor->action) {
+    case KF_ACTOR_ACTION_NONE:
+        // Vertical movement and occupancy maintenance still run below.
+        break;
     case KF_ACTOR_ACTION_IDLE:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_IDLE];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_IDLE];
             actor->animation_phase = 0;
         }
         actor_advance_animation_wrapped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_IDLE]);
@@ -924,8 +917,8 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_WANDER:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            if (actor->animation_id != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
-                actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
+            if (actor->animation_clip != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
+                actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
                 actor->animation_phase = 0;
             }
             actor->movement_yaw = kf::random_next() >> KF_RANDOM_ANGLE_SHIFT;
@@ -941,7 +934,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_HIT_REACTION:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_HIT_REACTION];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_HIT_REACTION];
             actor->animation_phase = 0;
         }
         actor_advance_animation_clamped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_HIT_REACTION]);
@@ -954,7 +947,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_DYING:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_DEATH];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_DEATH];
             actor->animation_phase = 0;
         }
         actor_advance_animation_clamped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_DEATH]);
@@ -964,22 +957,22 @@ void actor_update_current_action(void)
             return;
         }
         if (actor_animation_crossed_phase(actor, ACTOR_DEATH_DROP_PHASE)) {
-            debris = ((u32)kf::random_next() * definition->gold_drop_limit) >> ACTOR_GOLD_RANDOM_SHIFT;
-            if (debris != 0) {
-                map_object_spawn_actor_debris(
-                    debris, &actor->position, -(definition->collision_height >> 1));
+            gold_amount = ((u32)kf::random_next() * definition->gold_drop_limit) >> ACTOR_GOLD_RANDOM_SHIFT;
+            if (gold_amount != 0) {
+                map_object_spawn_gold_drop(
+                    gold_amount, &actor->position, -(definition->collision_height >> 1));
             }
             if (actor->slot_state == KF_ACTOR_SLOT_DYNAMIC || actor->slot_state == KF_ACTOR_SLOT_RESPAWNING) {
                 if (definition->action_parameters.drop_object != KF_MAP_OBJECT_DROP_DISABLED && definition->action_parameters.drop_object != KF_OBJECT_NONE
                     && (kf::random_next() >> ACTOR_DROP_CHANCE_RANDOM_SHIFT) <= definition->action_parameters.drop_chance) {
-                    map_object_spawn_effect(
+                    map_object_spawn_drop(
                         KF_MAP_OBJECT_DROP_FROM_DEFINITION,
                         definition->action_parameters.drop_object,
                         &actor->position,
                         -(definition->collision_height >> 1));
                 }
             } else if (actor->death_drop_object_id != KF_MAP_OBJECT_DROP_DISABLED) {
-                map_object_spawn_effect(
+                map_object_spawn_drop(
                     KF_MAP_OBJECT_DROP_FROM_PLACEMENT,
                     actor->death_drop_object_id,
                     &actor->position,
@@ -995,8 +988,8 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_RETREAT:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            if (actor->animation_id != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
-                actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
+            if (actor->animation_clip != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
+                actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
                 actor->animation_phase = 0;
             }
             actor->movement_yaw = actor_bearing_to_player(actor);
@@ -1011,7 +1004,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_MELEE_ATTACK:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_LOCKED;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MELEE];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MELEE];
             actor->animation_phase = 0;
         }
         actor_advance_animation_clamped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_MELEE]);
@@ -1046,7 +1039,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_JUMP_ATTACK:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_JUMP_RISING;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_JUMP_ATTACK];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_JUMP_ATTACK];
             actor->animation_phase = 0;
             attribute = map_cell_attribute_grid.cells[actor->cell_z][actor->cell_x];
             if (map_cell_attribute_height_table[kf_enum_encode<u8>(attribute) - 1] > ACTOR_JUMP_HEIGHT_THRESHOLD) {
@@ -1062,11 +1055,12 @@ void actor_update_current_action(void)
         }
         actor_apply_horizontal_movement();
         actor->animation_phase += actor->animation_step;
-        if (actor->animation_phase >= KF_ACTOR_ANIMATION_PHASE_MAX) {
-            actor->animation_phase = KF_ACTOR_ANIMATION_PHASE_MAX;
-        }
+        actor->animation_phase = std::min<s32>(actor->animation_phase, KF_ACTOR_ANIMATION_PHASE_MAX);
         actor_play_sound_at_phase(&definition->sounds[KF_ACTOR_SOUND_ATTACK], definition->action_animation_phases[KF_ACTOR_ANIM_SLOT_JUMP_ATTACK]);
         switch (actor->action_progress) {
+        default:
+            // Only the jump-attack progress markers transition in this action.
+            break;
         case KF_ACTOR_PROGRESS_JUMP_RISING:
             if (actor->vertical_velocity >= 0) {
                 actor_prepare_charge_toward_player();
@@ -1084,19 +1078,14 @@ void actor_update_current_action(void)
                 actor->vertical_state = KF_ACTOR_VERTICAL_NONE;
                 actor->vertical_velocity = 0;
                 result = collision_query_world(
-                    actor->position.vx,
-                    actor->position.vy,
-                    actor->position.vz,
-                    definition->collision_radius,
-                    definition->collision_height,
+                    actor->position.vx, actor->position.vy, actor->position.vz,
+                    definition->collision_radius, definition->collision_height,
                     ACTOR_VELOCITY_COLLISION_FLAGS);
 
                 // Retail compares the shifted kind with the ceiling detail, so this never
                 // ran; the port option checks for a ceiling hit (upstream sushi-shi #50).
-                if (kf::fix_actor_ceiling_fall ? result == KF_COLLISION_CEILING
-                        : result != KF_COLLISION_NONE && (result >> KF_COLLISION_KIND_SHIFT) == KF_COLLISION_DETAIL_CEILING) {
+                if (kf::fix_actor_ceiling_fall && result.kind == KfCollisionKind::Ceiling) {
                     actor->vertical_state = KF_ACTOR_VERTICAL_FALL;
-                    actor->vertical_velocity = 0;
                 }
                 actor->action_progress = KF_ACTOR_PROGRESS_COMPLETE;
                 actor_select_next_action(actor_player_distance(actor, ACTOR_ACTIVE_RANGE));
@@ -1107,7 +1096,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_SPECIAL_ATTACK:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_LOCKED;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_SPECIAL_ATTACK];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_SPECIAL_ATTACK];
             actor->animation_phase = 0;
         }
         actor_advance_animation_clamped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_SPECIAL_ATTACK]);
@@ -1124,12 +1113,12 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_EXIT_BLOCKED_PLACEMENT:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
             actor->animation_phase = 0;
         }
         result = collision_query_world(
             actor->position.vx, KF_COLLISION_IGNORE_HEIGHT, actor->position.vz, definition->collision_radius, 0, ACTOR_WALK_COLLISION_FLAGS);
-        if (result != KF_COLLISION_NONE) {
+        if (result.kind != KfCollisionKind::None) {
             target.vx = actor->position.vx;
             target.vz = actor->position.vz;
             angle_to_forward_xz(actor->rotation.angles.y, &direction);
@@ -1148,7 +1137,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_DRIFT:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_DRIFT];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_DRIFT];
             actor->animation_phase = 0;
             actor->movement_y = 0;
             actor->movement_z = 0;
@@ -1160,14 +1149,10 @@ void actor_update_current_action(void)
         actor_apply_random_movement(ACTOR_DRIFT_AXIS_ACCELERATION, ACTOR_DRIFT_AXIS_SPEED_LIMIT);
         if (kf::random_next() < (kf::random_max + 1) / 2) {
             actor->movement_yaw++;
-            if (actor->movement_yaw > ACTOR_DRIFT_YAW_SPEED_LIMIT) {
-                actor->movement_yaw = ACTOR_DRIFT_YAW_SPEED_LIMIT;
-            }
+            actor->movement_yaw = std::min<s32>(actor->movement_yaw, ACTOR_DRIFT_YAW_SPEED_LIMIT);
         } else {
             actor->movement_yaw--;
-            if (actor->movement_yaw < -ACTOR_DRIFT_YAW_SPEED_LIMIT) {
-                actor->movement_yaw = -ACTOR_DRIFT_YAW_SPEED_LIMIT;
-            }
+            actor->movement_yaw = std::max<s32>(actor->movement_yaw, -ACTOR_DRIFT_YAW_SPEED_LIMIT);
         }
         actor->rotation.angles.y = (actor->rotation.angles.y + actor->movement_yaw) & KF_ANGLE_WRAP_MASK;
         actor_advance_animation_wrapped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_DRIFT]);
@@ -1187,8 +1172,8 @@ void actor_update_current_action(void)
         const s32 home_z = map_placement_axis_position(actor->tile_z, actor->local_z);
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_RUNNING;
-            if (actor->animation_id != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
-                actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
+            if (actor->animation_clip != definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE]) {
+                actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MOVE];
                 actor->animation_phase = 0;
             }
 
@@ -1205,13 +1190,13 @@ void actor_update_current_action(void)
                 actor->movement_yaw = kf_enum_encode<u8>(actor->heading_quadrant) * KF_ANGLE_QUARTER_TURN;
                 actor->rotation.angles.y = angle_approach(
                     actor->rotation.angles.y, actor->movement_yaw, definition->turn_rate);
-                if (actor->animation_id != definition->action_animations[KF_ACTOR_ANIM_SLOT_MELEE]) {
+                if (actor->animation_clip != definition->action_animations[KF_ACTOR_ANIM_SLOT_MELEE]) {
                     break;
                 }
                 if (actor->movement_yaw == actor->rotation.angles.y
                     && actor_animation_crossed_phase(actor, ACTOR_HOME_ANIMATION_RESET_PHASE)) {
                     actor->animation_phase = 0;
-                    actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MELEE];
+                    actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MELEE];
                     break;
                 }
                 actor_advance_animation_wrapped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_MOVE]);
@@ -1229,7 +1214,7 @@ void actor_update_current_action(void)
     case KF_ACTOR_ACTION_MULTI_HIT_ATTACK:
         if (actor->action_progress == KF_ACTOR_PROGRESS_INIT) {
             actor->action_progress = KF_ACTOR_PROGRESS_LOCKED;
-            actor->animation_id = definition->action_animations[KF_ACTOR_ANIM_SLOT_MULTI_HIT_ATTACK];
+            actor->animation_clip = definition->action_animations[KF_ACTOR_ANIM_SLOT_MULTI_HIT_ATTACK];
             actor->animation_phase = 0;
         }
         actor_advance_animation_clamped(actor, definition->action_animation_steps[KF_ACTOR_ANIM_SLOT_MULTI_HIT_ATTACK]);

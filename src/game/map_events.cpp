@@ -1,13 +1,16 @@
-#include <kf/game/audio.h>
-#include <kf/lib/random.hpp>
+#include <kf/platform/prelude.h>
 #include <kf/game/actor.h>
-#include <kf/lib/map_data.h>
-#include <kf/lib/map.h>
+#include <kf/game/audio.h>
 #include <kf/game/collision.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/game.h>
+#include <kf/lib/map.h>
+#include <kf/lib/map_data.h>
+#include <kf/lib/random.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 enum {
     MAP_AMBIENT_COUNTDOWN_RELOAD = 10,
@@ -45,8 +48,8 @@ void map_event_update_wander(void)
 
     if (collision_query_world(
             point.vx, KF_COLLISION_IGNORE_HEIGHT, point.vz, event->radius, 0,
-            KF_COLLISION_SKIP_MAP_EVENTS | (KF_COLLISION_CELL_BLOCKS_WANDER << KF_COLLISION_CELL_FLAG_SHIFT))
-            == KF_COLLISION_NONE) {
+            KF_COLLISION_SKIP_MAP_EVENTS | (KF_COLLISION_CELL_BLOCKS_WANDER << KF_COLLISION_CELL_FLAG_SHIFT)).kind
+            == KfCollisionKind::None) {
         event->reference_position.vx = point.vx;
         event->reference_position.vz = point.vz;
         event->cell_x = point.vx / KF_MAP_TILE_SIZE;
@@ -94,6 +97,9 @@ void map_event_pool_update(void)
             map_event_set_current(&event);
 
             switch (event.behavior) {
+            case KF_MAP_EVENT_BEHAVIOR_SHOP:
+                // Shop interaction is handled outside the ambient animation update.
+                break;
             case KF_MAP_EVENT_BEHAVIOR_WANDER:
                 map_event_update_wander();
                 break;
@@ -106,9 +112,7 @@ void map_event_pool_update(void)
                 if (event.dialogue.page_delay == 0) {
                     s32 limit = event.dialogue_pages.last_page[event.dialogue.stage - 1];
                     event.dialogue.page++;
-                    if (event.dialogue.page >= limit) {
-                        event.dialogue.page = limit;
-                    }
+                    event.dialogue.page = std::min<s32>(event.dialogue.page, limit);
                 }
             }
         }
@@ -127,6 +131,9 @@ void map_event_pool_update(void)
     if (map_runtime_state.ambient_script_countdown-- == 0) {
         map_runtime_state.ambient_script_countdown = MAP_AMBIENT_COUNTDOWN_RELOAD;
         switch (player_state.progress_state.current_floor) {
+        case KF_FLOOR_FORCE_RELOAD:
+            // This resource-load sentinel has no ambient floor script.
+            break;
         case KF_FLOOR_1:
             map_ambient_script_floor1();
             break;
@@ -172,11 +179,11 @@ void map_world_state_persist(void)
     s32 active;
 
     out = map_runtime_state.world_state.floors[
-        kf_enum_encode<u8>(player_state.progress_state.current_floor) - 1].records;
+        kf_enum_encode<u8>(player_state.progress_state.current_floor) - 1].records.data();
     u8 *const end = out + KF_MAP_SAVED_RECORD_BYTES;
     map_saved_put(out, end, 1);
 
-    event = map_runtime_state.events;
+    event = map_runtime_state.events.data();
     for (i = 0; i < KF_MAP_EVENT_CAPACITY; i++, event++) {
         map_saved_put(out, end, kf_enum_encode<u8>(event->state));
         map_saved_put(out, end, event->dialogue.stage_limit);
@@ -264,7 +271,7 @@ void map_world_state_persist(void)
 
 void map_unload_floor(void)
 {
-    pool_release_all();
+    animation_cache_release_all();
     audio_close_vab(audio_state);
     map_world_state_persist();
 }

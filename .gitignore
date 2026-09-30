@@ -1,8 +1,6 @@
 /build/
 /result
 /result-*
-/codecs/target/
-/codec-bridge/target/
 *.kfpack
 __pycache__/
 *.pyc
@@ -31,3 +29,5 @@ __pycache__/
 *.kfs.bak
 kf.log
 /dist/
+# Derived translation payload; never commit or publish (terms unstated).
+*.kfdelta

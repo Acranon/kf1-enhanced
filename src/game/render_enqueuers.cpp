@@ -1,13 +1,15 @@
-#include <kf/lib/null.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/graphics.h>
-
-#include <kf/lib/geometry_types.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/render.h>
-#include <kf/lib/tmd.h>
+#include <kf/lib/geometry_types.h>
+#include <kf/lib/null.h>
 #include <kf/lib/render_face.h>
+#include <kf/lib/tmd.h>
+
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 CVECTOR tmd_textured_primitive_color = {
     KF_TEXTURE_BASE_BRIGHTNESS, KF_TEXTURE_BASE_BRIGHTNESS,
@@ -19,340 +21,251 @@ void render_enqueue_tmd(u16 object_index, s16 depth_bias, const MATRIX *lights)
     const auto object = tmd_read_object(tmd_context(), object_index);
     auto stream = tmd_primitive_stream(tmd_context(), object);
     const auto normals = tmd_normal_bytes(tmd_context(), object);
-    const auto *vertices = game_graphics_runtime.tmd_projected_vertices;
+    const auto &vertices = game_graphics_runtime.tmd_projected_vertices;
     s32 otz;
-    const KfScreenVertex *va;
-    const KfScreenVertex *vb;
-    const KfScreenVertex *vc;
-    const KfScreenVertex *vd;
 
     while (stream.remaining != 0) {
         const auto packet = tmd_next_packet(stream);
         switch (packet.mode) {
+        default:
+            // Preserve the original enqueuer's supported packet subset.
+            break;
         case KF_TMD_MODE_FT3: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = render_texture_material(p.texture_page, p.palette);
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, (va->p2 + vb->p2 + vc->p2) / 3);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_F4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, (va->p2 + vb->p2 + vc->p2 + vd->p2) >> 2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_G3: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), p.color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), p.color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[2]), p.color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_G4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), p.color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[2]), p.color, projected->fog(0));
                 colors[3] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[3]), p.color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[3]), p.color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_GT3: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = render_texture_material(p.texture_page, p.palette);
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), tmd_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), tmd_textured_primitive_color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), tmd_textured_primitive_color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[2]), tmd_textured_primitive_color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_GT4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = render_texture_material(p.texture_page, p.palette);
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
-                render_face_uv(&face, 3, p.uv[3]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2], p.uv[3]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), tmd_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), tmd_textured_primitive_color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), tmd_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[2]), tmd_textured_primitive_color, projected->fog(0));
                 colors[3] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[3]), tmd_textured_primitive_color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[3]), tmd_textured_primitive_color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
-        case (KF_TMD_MODE_G3 | KF_TMD_MODE_SEMITRANS): {
+        case KF_TMD_MODE_G3_SEMITRANS: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.transparency = kf::FaceTransparency::Blend;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
                     tmd_read_normal(normals, p.normals[0]), p.color, 0);
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
                     tmd_read_normal(normals, p.normals[1]), p.color, 0);
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
                     tmd_read_normal(normals, p.normals[2]), p.color, 0);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_FT4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = render_texture_material(p.texture_page, p.palette);
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
-                render_face_uv(&face, 3, p.uv[3]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2], p.uv[3]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, (va->p2 + vb->p2 + vc->p2 + vd->p2) >> 2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[0]), tmd_textured_primitive_color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_F3: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, (va->p2 + vb->p2 + vc->p2) / 3);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
-        case (KF_TMD_MODE_G4 | KF_TMD_MODE_SEMITRANS): {
+        case KF_TMD_MODE_G4_SEMITRANS: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.transparency = kf::FaceTransparency::Blend;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), p.color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), p.color, va->p2);
+                    tmd_read_normal(normals, p.normals[2]), p.color, projected->fog(0));
                 colors[3] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[3]), p.color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[3]), p.color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
-        case (KF_TMD_MODE_F3 | KF_TMD_MODE_SEMITRANS): {
+        case KF_TMD_MODE_F3_SEMITRANS: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.transparency = kf::FaceTransparency::Blend;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, (va->p2 + vb->p2 + vc->p2) / 3);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
-        case (KF_TMD_MODE_F4 | KF_TMD_MODE_SEMITRANS): {
+        case KF_TMD_MODE_F4_SEMITRANS: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.transparency = kf::FaceTransparency::Blend;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), p.color, (va->p2 + vb->p2 + vc->p2 + vd->p2) >> 2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[0]), p.color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
@@ -361,138 +274,105 @@ void render_enqueue_tmd(u16 object_index, s16 depth_bias, const MATRIX *lights)
     }
 }
 
-CVECTOR model_textured_primitive_color = {
+CVECTOR retextured_primitive_color = {
     KF_TEXTURE_BASE_BRIGHTNESS, KF_TEXTURE_BASE_BRIGHTNESS,
     KF_TEXTURE_BASE_BRIGHTNESS, 0
 };
 
-void render_enqueue_model(u16 object_index, s16 depth_bias, const MATRIX *lights)
+void render_enqueue_tmd_retextured(u16 object_index, s16 depth_bias, const MATRIX *lights)
 {
     const auto object = tmd_read_object(tmd_context(), object_index);
     auto stream = tmd_primitive_stream(tmd_context(), object);
     const auto normals = tmd_normal_bytes(tmd_context(), object);
-    const auto *vertices = game_graphics_runtime.tmd_projected_vertices;
+    const auto &vertices = game_graphics_runtime.tmd_projected_vertices;
     s32 otz;
-    const KfScreenVertex *va;
-    const KfScreenVertex *vb;
-    const KfScreenVertex *vc;
-    const KfScreenVertex *vd;
 
     while (stream.remaining != 0) {
         const auto packet = tmd_next_packet(stream);
         switch (packet.mode) {
+        default:
+            // This pass only draws opaque textured faces.
+            break;
         case KF_TMD_MODE_GT3: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = game_graphics_runtime.active_render_material;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), model_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), retextured_primitive_color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), model_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), retextured_primitive_color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), model_textured_primitive_color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[2]), retextured_primitive_color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_GT4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = game_graphics_runtime.active_render_material;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
-                render_face_uv(&face, 3, p.uv[3]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2], p.uv[3]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), model_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[0]), retextured_primitive_color, projected->fog(0));
                 colors[1] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[1]), model_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[1]), retextured_primitive_color, projected->fog(0));
                 colors[2] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[2]), model_textured_primitive_color, va->p2);
+                    tmd_read_normal(normals, p.normals[2]), retextured_primitive_color, projected->fog(0));
                 colors[3] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[3]), model_textured_primitive_color, va->p2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[3]), retextured_primitive_color, projected->fog(0));
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_FT3: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = game_graphics_runtime.active_render_material;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), model_textured_primitive_color, (va->p2 + vb->p2 + vc->p2) / 3);
-                otz = (va->sz + vb->sz + vc->sz) / 3 >> KF_GTE_DEPTH_TO_OT_SHIFT;
+                    tmd_read_normal(normals, p.normals[0]), retextured_primitive_color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
         }
         case KF_TMD_MODE_FT4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = game_graphics_runtime.active_render_material;
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
-                render_face_uv(&face, 3, p.uv[3]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2], p.uv[3]});
                 colors[0] = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
-                    tmd_read_normal(normals, p.normals[0]), model_textured_primitive_color, (va->p2 + vb->p2 + vc->p2 + vd->p2) >> 2);
-                otz = (va->sz + vb->sz + vc->sz + vd->sz) >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2);
+                    tmd_read_normal(normals, p.normals[0]), retextured_primitive_color, projected->average_fog());
+                otz = projected->ordering_depth();
                 if (otz + depth_bias > (KF_SCENE_MIN_OT_DEPTH - 1)) {
-                    render_face_submit(&face, colors, KfFaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Flat, (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
@@ -513,48 +393,37 @@ void render_enqueue_map(u16 object_index, const MATRIX *lights, const MATRIX *mo
     const auto object = tmd_read_object(tmd_context(), object_index);
     auto stream = tmd_primitive_stream(tmd_context(), object);
     const auto normals = tmd_normal_bytes(tmd_context(), object);
-    const auto *vertices = game_graphics_runtime.tmd_projected_vertices;
+    const auto &vertices = game_graphics_runtime.tmd_projected_vertices;
     CVECTOR shade;
-    const KfScreenVertex *va;
-    const KfScreenVertex *vb;
-    const KfScreenVertex *vc;
-    const KfScreenVertex *vd;
 
     tmd_project_vertices(object.vertex_count, model, projection);
     while (stream.remaining != 0) {
         const auto packet = tmd_next_packet(stream);
         switch (packet.mode) {
+        default:
+            // Map cells only submit flat-shaded opaque textured faces.
+            break;
         case KF_TMD_MODE_FT4: {
             const auto p = tmd_decode_face(packet, object.vertex_count);
             s32 otz;
 
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-            if (render_face_winding(va, vb, vc) > 0) {
-                vd = &vertices[p.vertices[3]];
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Quad;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                projected->complete_quad(vertices[p.vertices[3]]);
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = render_texture_material(p.texture_page, p.palette);
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_vertex(&face, 3, vd);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
-                render_face_uv(&face, 3, p.uv[3]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2], p.uv[3]});
                 shade = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
                     tmd_read_normal(normals, p.normals[0]), map_textured_primitive_color, 0);
-                colors[0] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, va->p2);
-                colors[1] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, vb->p2);
-                colors[2] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, vc->p2);
-                colors[3] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, vd->p2);
-                otz = ((va->sz + vb->sz + vc->sz + vd->sz)
-                    >> (KF_GTE_DEPTH_TO_OT_SHIFT + 2)) + KF_MAP_OT_DEPTH_BIAS;
+                colors[0] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(0));
+                colors[1] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(1));
+                colors[2] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(2));
+                colors[3] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(3));
+                otz = projected->ordering_depth() + KF_MAP_OT_DEPTH_BIAS;
                 if (otz < KF_ORDERING_TABLE_LENGTH) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, otz & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, otz & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
@@ -563,29 +432,21 @@ void render_enqueue_map(u16 object_index, const MATRIX *lights, const MATRIX *mo
             const auto p = tmd_decode_face(packet, object.vertex_count);
             s32 otz;
 
-            va = &vertices[p.vertices[0]];
-            vb = &vertices[p.vertices[1]];
-            vc = &vertices[p.vertices[2]];
-            if (render_face_winding(va, vb, vc) > 0) {
-                kf::DrawFace face {};
-                CVECTOR colors[4] {};
-                face.shape = kf::FaceShape::Triangle;
+            auto projected = render_projected_triangle(
+                vertices, p.vertices[0], p.vertices[1], p.vertices[2]);
+            if (projected) {
+                auto face = projected->draw_face();
+                std::array<CVECTOR, 4> colors {};
                 face.material = render_texture_material(p.texture_page, p.palette);
-                render_face_vertex(&face, 0, va);
-                render_face_vertex(&face, 1, vb);
-                render_face_vertex(&face, 2, vc);
-                render_face_uv(&face, 0, p.uv[0]);
-                render_face_uv(&face, 1, p.uv[1]);
-                render_face_uv(&face, 2, p.uv[2]);
+                render_face_uvs(face, {p.uv[0], p.uv[1], p.uv[2]});
                 shade = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
                     tmd_read_normal(normals, p.normals[0]), map_textured_primitive_color, 0);
-                colors[0] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, va->p2);
-                colors[1] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, vb->p2);
-                colors[2] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, vc->p2);
-                otz = ((va->sz + vb->sz + vc->sz) / 3
-                    >> KF_GTE_DEPTH_TO_OT_SHIFT) + KF_MAP_OT_DEPTH_BIAS;
+                colors[0] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(0));
+                colors[1] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(1));
+                colors[2] = kf::render_fog_color(game_graphics_runtime.render_state.lighting, shade, projected->fog(2));
+                otz = projected->ordering_depth() + KF_MAP_OT_DEPTH_BIAS;
                 if (otz < KF_ORDERING_TABLE_LENGTH) {
-                    render_face_submit(&face, colors, KfFaceShading::Gouraud, otz & KF_ORDERING_TABLE_INDEX_MASK);
+                    render_face_submit(&face, colors, kf::FaceShading::Gouraud, otz & KF_ORDERING_TABLE_INDEX_MASK);
                 }
             }
             break;
@@ -596,7 +457,7 @@ void render_enqueue_map(u16 object_index, const MATRIX *lights, const MATRIX *mo
 
 void render_enqueue_sprite(KfSpriteQuad *sprite, s16 depth_bias, KfSpriteDepthCueMode depth_cue_mode, const MATRIX *lights, const MATRIX *model, const kf::Projection &projection)
 {
-    SVECTOR corners[4];
+    std::array<SVECTOR, 4> corners;
     SVECTOR anchor;
     s32 depth_cue;
     s32 otz;
@@ -608,7 +469,7 @@ void render_enqueue_sprite(KfSpriteQuad *sprite, s16 depth_bias, KfSpriteDepthCu
     corners[0].vz = corners[1].vz = corners[2].vz = corners[3].vz = 0;
     anchor.vx = anchor.vy = anchor.vz = 0;
     otz = kf::render_project_point(*model, projection, anchor).depth >> KF_GTE_DEPTH_TO_OT_SHIFT;
-    kf::ProjectedPoint positions[4];
+    std::array<kf::ProjectedPoint, 4> positions;
     for (unsigned i = 0; i < 4; ++i)
         positions[i] = kf::render_project_point(*model, projection, corners[i]);
     depth_cue = positions[3].fog;
@@ -635,7 +496,7 @@ void render_enqueue_sprite(KfSpriteQuad *sprite, s16 depth_bias, KfSpriteDepthCu
     color = kf::render_light_normal(game_graphics_runtime.render_state.lighting, *lights,
         render_sprite_light_normal, game_graphics_runtime.active_render_color, depth_cue);
     if (otz + depth_bias >= KF_SCENE_MIN_OT_DEPTH) {
-        render_face_submit(&face, &color, KfFaceShading::Flat,
+        render_face_submit(&face, {&color, 1}, kf::FaceShading::Flat,
             (otz + depth_bias) & KF_ORDERING_TABLE_INDEX_MASK);
     }
 }
@@ -643,7 +504,7 @@ void render_enqueue_sprite(KfSpriteQuad *sprite, s16 depth_bias, KfSpriteDepthCu
 void render_enqueuers_reset_module_state(void)
 {
     kf::restore_initial_value<tmd_textured_primitive_color>();
-    kf::restore_initial_value<model_textured_primitive_color>();
+    kf::restore_initial_value<retextured_primitive_color>();
     kf::restore_initial_value<map_textured_primitive_color>();
     kf::restore_initial_value<render_sprite_light_normal>();
 }

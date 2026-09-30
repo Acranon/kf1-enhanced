@@ -2,9 +2,9 @@
 #define KF_RESOURCE_FILE_H
 
 #include <kf/lib/memory.h>
-
 #include <kf/lib/types.h>
-#include <kf/platform/files.hpp>
+#include <kf/platform/files.h>
+
 #include <cstddef>
 
 enum class KfResourceLoadResult : s32 {
@@ -30,4 +30,4 @@ KfResourceLoadResult resource_file_load_into(
     void *destination, std::size_t capacity, const char *relative_path,
     std::size_t *loaded_size = nullptr);
 
-#endif
+#endif // KF_RESOURCE_FILE_H

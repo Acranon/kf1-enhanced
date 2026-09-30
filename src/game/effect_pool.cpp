@@ -1,8 +1,8 @@
+#include <kf/platform/prelude.h>
 #include <kf/game/audio.h>
-#include <kf/lib/null.h>
-
 #include <kf/game/effect.h>
 #include <kf/game/game.h>
+#include <kf/lib/null.h>
 
 // These bytes are initialized by retail but have no modeled moonlight consumer.
 static constexpr u8 EFFECT_MOONLIGHT_INITIAL_CONTROL_BYTE = 0xff;
@@ -369,7 +369,7 @@ static KfEffectRecord *effect_pool_construct_impl(u8 id, KfEffectType type, KfEf
     return record;
 }
 
-KfEffectRecord *effect_pool_spawn_typed(
+KfEffectRecord *effect_pool_spawn_floor_deformation(
     u16 first_segment, u16 segment_count, u16 progress_per_update, u16 cell_stagger,
     s32 sweep_updates, s32 hold_countdown)
 {

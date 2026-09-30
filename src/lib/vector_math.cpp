@@ -1,6 +1,4 @@
-#include <kf/platform/prelude.hpp>
-#include <kf/lib/bool.h>
-
+#include <kf/platform/prelude.h>
 #include <kf/lib/math.h>
 
 void pitch_yaw_to_forward_vector(const struct KfEulerAngles *angles, SVECTOR *direction)
@@ -63,14 +61,14 @@ void vector3i_add_xz(VECTOR *destination, const struct KfVecXZs *delta)
     destination->vz += delta->z;
 }
 
-KfBool angle_within_tolerance(int lhs, int rhs, s16 range)
+bool angle_within_tolerance(int lhs, int rhs, s16 tolerance)
 {
     int delta = (lhs - rhs) & KF_ANGLE_WRAP_MASK;
 
-    return delta <= range || KF_ANGLE_FULL_TURN - range <= delta;
+    return delta <= tolerance || KF_ANGLE_FULL_TURN - tolerance <= delta;
 }
 
-KfBool angle_mod_delta_le_half_turn(int lhs, int rhs)
+bool angle_mod_delta_le_half_turn(int lhs, int rhs)
 {
     return ((lhs - rhs) & KF_ANGLE_WRAP_MASK) < (KF_ANGLE_HALF_TURN + 1);
 }
@@ -94,6 +92,14 @@ s32 fixed_vector2_length(s32 x, s32 y)
     x >>= KF_LENGTH_SQUARE_DOWNSHIFT;
     y >>= KF_LENGTH_SQUARE_DOWNSHIFT;
     return kf::length_square_root(x * x + y * y) << KF_LENGTH_SQUARE_DOWNSHIFT;
+}
+
+s32 fixed_vector3_length(s32 x, s32 y, s32 z)
+{
+    x >>= KF_LENGTH_SQUARE_DOWNSHIFT;
+    y >>= KF_LENGTH_SQUARE_DOWNSHIFT;
+    z >>= KF_LENGTH_SQUARE_DOWNSHIFT;
+    return kf::length_square_root(x * x + y * y + z * z) << KF_LENGTH_SQUARE_DOWNSHIFT;
 }
 
 s16 angle_shortest_delta(s32 first, s32 second)

@@ -1,10 +1,10 @@
-#include <kf/game/graphics.h>
-
-#include <kf/lib/map_data.h>
-#include <kf/game/render.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/render.h>
+#include <kf/lib/map_data.h>
 #include <kf/game/player_motion.h>
-#include <kf/platform/input.hpp>
+#include <kf/platform/input.h>
 #include <cstdlib>
 
 enum {
@@ -42,7 +42,7 @@ void render_map_cell(s32 col, s32 row, KfCellVisibility visibility)
 {
     MATRIX cell_matrix;
     SVECTOR position;
-    s32 orient;
+    s32 orientation;
     u8 object_index;
     s16 staff_timer;
 
@@ -70,7 +70,7 @@ void render_map_cell(s32 col, s32 row, KfCellVisibility visibility)
     if (object_index > KF_MAP_MESHES_PER_BANK - 1) {
         return;
     }
-    orient = kf_enum_encode<u8>(map_cell_orientation_grid.cells[row][col]) - 1;
+    orientation = kf_enum_encode<u8>(map_cell_orientation_grid.cells[row][col]) - 1;
     if (visibility == KF_CELL_WINDOW_DISTANT) {
         object_index += KF_MAP_MESHES_PER_BANK;
     }
@@ -79,22 +79,22 @@ void render_map_cell(s32 col, s32 row, KfCellVisibility visibility)
         map_floor_height_grid.cells[row][col] * -KF_MAP_HEIGHT_STEP
             - game_graphics_runtime.render_state.view_position.vy,
         row * KF_MAP_TILE_SIZE - game_graphics_runtime.render_state.view_position.vz}.narrowed();
-    if (orient == kf_enum_encode<u8>(KF_MAP_ORIENT_QUARTER_TURN) - 1) {
+    if (orientation == kf_enum_encode<u8>(KF_MAP_ORIENT_QUARTER_TURN) - 1) {
         position.vz += KF_MAP_TILE_SIZE;
-    } else if (orient == kf_enum_encode<u8>(KF_MAP_ORIENT_HALF_TURN) - 1) {
+    } else if (orientation == kf_enum_encode<u8>(KF_MAP_ORIENT_HALF_TURN) - 1) {
         position.vx += KF_MAP_TILE_SIZE;
         position.vz += KF_MAP_TILE_SIZE;
-    } else if (orient == kf_enum_encode<u8>(KF_MAP_ORIENT_THREE_QUARTER_TURN) - 1) {
+    } else if (orientation == kf_enum_encode<u8>(KF_MAP_ORIENT_THREE_QUARTER_TURN) - 1) {
         position.vx += KF_MAP_TILE_SIZE;
     }
 
     kf::render_place_model(cell_matrix, game_graphics_runtime.render_state.view_matrix, position);
-    kf::matrix_multiply_rotation(game_graphics_runtime.render_state.view_matrix, game_graphics_runtime.render_state.quadrant_matrices[orient], cell_matrix);
+    kf::matrix_multiply_rotation(game_graphics_runtime.render_state.view_matrix, game_graphics_runtime.render_state.quadrant_matrices[orientation], cell_matrix);
     tmd_select_object_vertices(tmd_context(), object_index);
     const KfPreciseMapTransform precise{&game_graphics_runtime.render_state.view_matrix,
-        &game_graphics_runtime.render_state.quadrant_matrices[orient], position};
+        &game_graphics_runtime.render_state.quadrant_matrices[orientation], position};
     render_precise_map = &precise;
-    render_enqueue_map(object_index, &game_graphics_runtime.light_quadrant_matrices[orient], &cell_matrix, game_graphics_runtime.render_state.projection);
+    render_enqueue_map(object_index, &game_graphics_runtime.light_quadrant_matrices[orientation], &cell_matrix, game_graphics_runtime.render_state.projection);
     render_precise_map = nullptr;
 }
 

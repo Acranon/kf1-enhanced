@@ -1,4 +1,4 @@
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
 #include <kf/lib/audio.h>
 
 static constexpr std::size_t sound_chunk_header_bytes = 4;
@@ -67,8 +67,7 @@ void audio_close_vab(KfAudioState &state)
 
 void audio_reset_voice_slots(KfAudioState &state)
 {
-    for (auto &voice : state.voice_slots.voice_ids)
-        voice = kf::no_sound_voice;
+    state.voice_slots.voice_ids.fill(kf::no_sound_voice);
 }
 
 void audio_play_voice(KfAudioPlayback playback,

@@ -1,13 +1,17 @@
-#include <kf/platform/files.hpp>
+#include <kf/platform/files.h>
+
+#include <sys/stat.h>
+
 #include <cerrno>
-#include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <sys/stat.h>
+#include <new>
+#include <stdexcept>
+#include <string>
 
 namespace kf {
 static constexpr unsigned ascii_first_printable = 32;
-static char *data_root;
+static std::string data_root;
 
 bool data_files_set_root(const char *directory) {
     struct stat info {};
@@ -15,13 +19,13 @@ bool data_files_set_root(const char *directory) {
         std::fprintf(stderr, "Resource directory is unavailable: %s\n", directory ? directory : "(null)");
         return false;
     }
-    const auto length = std::strlen(directory);
-    auto *copy = static_cast<char *>(std::malloc(length + 1));
-    if (!copy)
+    try {
+        data_root = directory;
+    } catch (const std::bad_alloc &) {
         return false;
-    std::memcpy(copy, directory, length + 1);
-    std::free(data_root);
-    data_root = copy;
+    } catch (const std::length_error &) {
+        return false;
+    }
     return true;
 }
 
@@ -48,20 +52,22 @@ static bool valid_relative_path(const char *path) {
 
 FileResult data_file_open(DataFile *file, const char *path) {
     *file = {};
-    if (!data_root || !valid_relative_path(path))
+    if (data_root.empty() || !valid_relative_path(path))
         return FileResult::InvalidPath;
-    const auto root_size = std::strlen(data_root);
+    const auto root_size = data_root.size();
     const auto path_size = std::strlen(path);
     if (root_size > std::numeric_limits<std::size_t>::max() - path_size - 2)
         return FileResult::TooLarge;
-    const auto size = root_size + path_size + 2;
-    auto *full_path = static_cast<char *>(std::malloc(size));
-    if (!full_path)
+    std::string full_path;
+    try {
+        full_path = data_root + '/' + path;
+    } catch (const std::bad_alloc &) {
         return FileResult::OutOfMemory;
-    std::snprintf(full_path, size, "%s/%s", data_root, path);
-    auto *stream = std::fopen(full_path, "rb");
+    } catch (const std::length_error &) {
+        return FileResult::TooLarge;
+    }
+    auto *stream = std::fopen(full_path.c_str(), "rb");
     const int open_error = errno;
-    std::free(full_path);
     if (!stream)
         return open_error == ENOENT ? FileResult::NotFound : FileResult::IoError;
     struct stat info {};

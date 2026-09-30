@@ -1,44 +1,46 @@
-#include <stdarg.h>
-#include <kf/lib/null.h>
-#include <kf/game/graphics.h>
-
+#include <kf/platform/prelude.h>
 #include <kf/game/asset.h>
-#include <kf/lib/math.h>
+#include <kf/game/graphics.h>
+#include <kf/game/menu.h>
+#include <kf/game/notify.h>
 #include <kf/game/player.h>
 #include <kf/game/render.h>
 #include <kf/lib/geometry_types.h>
-#include <kf/game/notify.h>
-#include <kf/game/menu.h>
+#include <kf/lib/math.h>
+#include <kf/lib/null.h>
 
-KfHudSprite hud_sprites[KF_HUD_TABLE_ROWS] = {
-    {KF_SPRITE_VISIBLE, 0, {0x50, 0x03, 1, 5, 0x1f, 0x15, 0x32, 5}},
-    {KF_SPRITE_VISIBLE, 0, {0x50, 0x03, 1, 5, 0x1f, 0x23, 0x32, 5}},
-    {KF_SPRITE_VISIBLE, 0, {0x50, 0x15, 1, 2, 0x81, 0x16, 0x32, 2}},
-    {KF_SPRITE_VISIBLE, 0, {0x50, 0x15, 1, 2, 0x81, 0x24, 0x32, 2}},
-    {KF_SPRITE_HIDDEN, 0, {0, 0x50, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
-    {KF_SPRITE_HIDDEN, 0, {0, 0x60, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
-    {KF_SPRITE_HIDDEN, 0, {0, 0x40, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
-    {KF_SPRITE_HIDDEN, 0, {0, 0x70, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
-    {KF_SPRITE_VISIBLE, 0, {0, 0, 0x4a, 0x0b, 0x0a, 0x12, 0x4a, 0x0b}},
-    {KF_SPRITE_VISIBLE, 0, {0, 0x10, 0x4a, 0x0b, 0x0a, 0x20, 0x4a, 0x0b}},
-    {KF_SPRITE_VISIBLE, 0, {0, 0x20, 0x5c, 8, 0x5e, 0x13, 0x5c, 8}},
-    {KF_SPRITE_VISIBLE, 0, {0, 0x30, 0x5c, 8, 0x5e, 0x21, 0x5c, 8}},
-    {KF_SPRITE_VISIBLE, 0, {0, 0x80, 0x21, 0x20, 0x10d, 0x12, 0x21, 0x20}},
-    {KF_SPRITE_END, 0, {0xff, 0xff, 0xff, 0xff, 0xffff, 0xffff, 0xffff, 0xffff}},
+#include <array>
+#include <stdarg.h>
+
+std::array<KfHudSprite, KF_HUD_TABLE_ROWS> hud_sprites = {
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0x50, 0x03, 1, 5, 0x1f, 0x15, 0x32, 5}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0x50, 0x03, 1, 5, 0x1f, 0x23, 0x32, 5}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0x50, 0x15, 1, 2, 0x81, 0x16, 0x32, 2}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0x50, 0x15, 1, 2, 0x81, 0x24, 0x32, 2}},
+    KfHudSprite{KF_SPRITE_HIDDEN, 0, {0, 0x50, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
+    KfHudSprite{KF_SPRITE_HIDDEN, 0, {0, 0x60, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
+    KfHudSprite{KF_SPRITE_HIDDEN, 0, {0, 0x40, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
+    KfHudSprite{KF_SPRITE_HIDDEN, 0, {0, 0x70, 0x38, 0x10, 0xc7, 0x16, 0x38, 0x10}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0, 0, 0x4a, 0x0b, 0x0a, 0x12, 0x4a, 0x0b}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0, 0x10, 0x4a, 0x0b, 0x0a, 0x20, 0x4a, 0x0b}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0, 0x20, 0x5c, 8, 0x5e, 0x13, 0x5c, 8}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0, 0x30, 0x5c, 8, 0x5e, 0x21, 0x5c, 8}},
+    KfHudSprite{KF_SPRITE_VISIBLE, 0, {0, 0x80, 0x21, 0x20, 0x10d, 0x12, 0x21, 0x20}},
+    KfHudSprite{KF_SPRITE_END, 0, {0xff, 0xff, 0xff, 0xff, 0xffff, 0xffff, 0xffff, 0xffff}},
 };
 
-KfNotificationSprite notification_sprites[KF_NOTIFICATION_SPRITE_COUNT] = {
-    {KF_SPRITE_HIDDEN, 0, {0, 0, 0x7f, 0x0f, 0xffc0, 0xffa0, 0x7f, 0x0f}},
-    {KF_SPRITE_HIDDEN, 0, {0, 0, 0x7f, 0x0f, 0xffc4, 0xffa0, 0x7f, 0x0f}},
-    {KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffc4, 0xffa3, 7, 0x0b}},
-    {KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffba, 0xffa3, 7, 0x0b}},
-    {KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffb0, 0xffa3, 7, 0x0b}},
-    {KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffa6, 0xffa3, 7, 0x0b}},
+std::array<KfNotificationSprite, KF_NOTIFICATION_SPRITE_COUNT> notification_sprites = {
+    KfNotificationSprite{KF_SPRITE_HIDDEN, 0, {0, 0, 0x7f, 0x0f, 0xffc0, 0xffa0, 0x7f, 0x0f}},
+    KfNotificationSprite{KF_SPRITE_HIDDEN, 0, {0, 0, 0x7f, 0x0f, 0xffc4, 0xffa0, 0x7f, 0x0f}},
+    KfNotificationSprite{KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffc4, 0xffa3, 7, 0x0b}},
+    KfNotificationSprite{KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffba, 0xffa3, 7, 0x0b}},
+    KfNotificationSprite{KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffb0, 0xffa3, 7, 0x0b}},
+    KfNotificationSprite{KF_SPRITE_HIDDEN, 0, {0xf0, 0, 7, 0x0b, 0xffa6, 0xffa3, 7, 0x0b}},
 };
 
-KfEffectSprite effect_sprites[KF_EFFECT_SPRITE_TABLE_ROWS] = {
-    {KF_SPRITE_VISIBLE, KF_ANIMATION_CLIP_FIRST, 0, 0x33, 0x11e, 0x22, 0xc8, {0, 0}, {0, 0, 0, 0}, {0, 0}, NULL},
-    {KF_SPRITE_END, {}, 0, 0, 0, 0, 0, {}, {}, {}, nullptr},
+std::array<KfHudModel, KF_HUD_MODEL_TABLE_ROWS> hud_models = {
+    KfHudModel{KF_SPRITE_VISIBLE, KF_ANIMATION_CLIP_FIRST, 0, 0x33, 0x11e, 0x22, 0xc8, {0, 0}, {0, 0, 0, 0}, {0, 0}, NULL},
+    KfHudModel{KF_SPRITE_END, {}, 0, 0, 0, 0, 0, {}, {}, {}, nullptr},
 };
 
 enum {
@@ -66,31 +68,30 @@ void render_weapon(void)
     kf::matrix_set_rotation_xyz(weapon->render_rotation, model);
     asset_registry_select(KF_ASSET_WEAPON);
     object = tmd_get_object(tmd_context(), 0);
-    if (render_bind_animated_instance(
+    if (render_bind_instance_vertices(
             &player_state.weapon_animation_cache, KF_ASSET_WEAPON, KF_ANIMATION_CLIP_FIRST,
             player_state.weapon_attack_phase,
-            object->vertex_count) != NULL) {
-        tmd_project_vertices_shift(tmd_context(), object->vertex_count, WEAPON_PROJECTED_DEPTH_SHIFT, &model, projection);
+            object->vertex_count)) {
+        tmd_project_vertices_depth_shift(tmd_context(), object->vertex_count, WEAPON_PROJECTED_DEPTH_SHIFT, &model, projection);
         depth_bias =
             player_state.equipped_weapon_record->render_translation.z >> WEAPON_DEPTH_BIAS_SHIFT;
         render_enqueue_tmd(0, -depth_bias + WEAPON_BASE_DEPTH_BIAS, &render_light_matrices[KF_RENDER_LIGHT_WEAPON]);
     }
 }
 
-void render_effect_sprites(const MATRIX *lights)
+void render_hud_models(const MATRIX *lights)
 {
     MATRIX model;
     VECTOR scale;
     MATRIX saved_color_matrix;
-    KfEffectSprite *entry;
+    KfHudModel *entry;
     KfTmdObject *object;
     u16 scale_numerator;
 
     saved_color_matrix = game_graphics_runtime.render_state.lighting.color_matrix;
-    memcpy(game_graphics_runtime.render_state.lighting.color_matrix.m, (game_graphics_runtime.effect_color_matrix).m,
-        sizeof game_graphics_runtime.render_state.lighting.color_matrix.m);
+    game_graphics_runtime.render_state.lighting.color_matrix.m = (game_graphics_runtime.hud_model_color_matrix).m;
     scale.vz = KF_FIXED12_ONE;
-    entry = effect_sprites;
+    entry = hud_models.data();
     while (entry->state == KF_SPRITE_VISIBLE) {
         model.t[0] = entry->translation_x;
         model.t[1] = entry->translation_y;
@@ -100,22 +101,21 @@ void render_effect_sprites(const MATRIX *lights)
         scale.vy = scale_numerator;
         scale.vx = scale_numerator;
         kf::matrix_scale_axes(model, scale);
-        asset_registry_select(KF_ASSET_EFFECT_SPRITES);
+        asset_registry_select(KF_ASSET_HUD_MODELS);
         object = tmd_get_object(tmd_context(), 0);
-        if (render_bind_animated_instance(
-                &entry->animation_cache, KF_ASSET_EFFECT_SPRITES,
-                entry->animation_clip, entry->asset_variant,
-                object->vertex_count) != NULL) {
+        if (render_bind_instance_vertices(
+                &entry->animation_cache, KF_ASSET_HUD_MODELS,
+                entry->animation_clip, entry->animation_phase,
+                object->vertex_count)) {
             tmd_transform_vertices(tmd_context(), object->vertex_count, &model);
             render_enqueue_tmd(0, 0, lights);
         }
         entry++;
     }
-    memcpy(game_graphics_runtime.render_state.lighting.color_matrix.m, (saved_color_matrix).m,
-        sizeof game_graphics_runtime.render_state.lighting.color_matrix.m);
+    game_graphics_runtime.render_state.lighting.color_matrix.m = (saved_color_matrix).m;
 }
 
-void render_hud_gauges(KfHudSprite *table)
+void render_hud_sprites(KfHudSprite *table)
 {
     KfHudSprite *entry;
 
@@ -153,7 +153,7 @@ void notify_enqueue(KfNotificationArgument message_id, ...)
     if (game_graphics_runtime.notification_message_ids[*head] == KF_NOTIFICATION_NONE) {
         game_graphics_runtime.notification_message_ids[*head] = message_id;
         if (message_id == KF_NOTIFICATION_GOLD) {
-            u16 *payload = game_graphics_runtime.notification_state.message_payloads;
+            u16 *payload = game_graphics_runtime.notification_state.message_payloads.data();
             va_list arguments;
             va_start(arguments, message_id);
             payload[*head] = va_arg(arguments, s32);
@@ -198,8 +198,8 @@ void notify_effect_update(void)
         game_graphics_runtime.notification_state.control.effect_angle_x = 0;
         game_graphics_runtime.notification_state.control.hold_frames = NOTIFICATION_HOLD_FRAMES;
         if (id == KF_NOTIFICATION_GOLD) {
-            KfNotificationSprite *sprite_records = notification_sprites;
-            s16 digits[KF_NOTIFICATION_DIGIT_CAPACITY];
+            KfNotificationSprite *sprite_records = notification_sprites.data();
+            std::array<s16, KF_NOTIFICATION_DIGIT_CAPACITY> digits;
             sprite_records[KF_NOTIFICATION_TEXT_SPRITE].active = KF_SPRITE_HIDDEN;
             notification_sprites[KF_NOTIFICATION_GOLD_SPRITE].active = KF_SPRITE_VISIBLE;
             notification_sprites[KF_NOTIFICATION_GOLD_SPRITE].sprite.u =
@@ -270,5 +270,5 @@ void geometry_render_reset_module_state(void)
 {
     kf::restore_initial_value<hud_sprites>();
     kf::restore_initial_value<notification_sprites>();
-    kf::restore_initial_value<effect_sprites>();
+    kf::restore_initial_value<hud_models>();
 }

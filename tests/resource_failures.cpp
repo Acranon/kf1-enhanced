@@ -1,7 +1,7 @@
 #include "../src/lib/resource_file.cpp"
 #include "../src/platform/files.cpp"
 #include <cassert>
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
 
 // A missing file must fail before allocating or releasing any game storage.
 void *memory_allocate(KfMemoryArena &, std::size_t) { std::abort(); }

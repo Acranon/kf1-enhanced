@@ -1,7 +1,11 @@
-#include <kf/platform/saves.hpp>
+#include <kf/platform/saves.h>
+
 #include <SDL3/SDL.h>
+
+#include <array>
 #include <cstdio>
 #include <cstring>
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 
@@ -84,10 +88,12 @@ EM_ASYNC_JS(int, browser_save_write, (int slot, const u8 *input, unsigned size),
 #include <filesystem>
 #include <windows.h>
 #else
+#include <sys/stat.h>
+
 #include <cerrno>
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <unistd.h>
+
 #endif
 
 namespace kf {
@@ -228,9 +234,9 @@ SaveFileResult save_file_read(SaveSlot slot, u8 *data, std::size_t capacity, std
 #else
     if (save_directory < 0)
         return SaveFileResult::Unavailable;
-    char name[save_name_capacity];
-    std::snprintf(name, sizeof name, "slot%u.kfs", static_cast<unsigned>(slot));
-    const int file = ::openat(save_directory, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    std::array<char, save_name_capacity> name;
+    std::snprintf(name.data(), name.size(), "slot%u.kfs", static_cast<unsigned>(slot));
+    const int file = ::openat(save_directory, name.data(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     if (file < 0)
         return errno == ENOENT ? SaveFileResult::Missing : io_error();
     struct stat info{};
@@ -299,13 +305,14 @@ SaveFileResult save_file_write(SaveSlot slot, const u8 *data, std::size_t size) 
 #else
     if (save_directory < 0)
         return SaveFileResult::Unavailable;
-    char name[save_name_capacity], pending[pending_name_capacity];
-    std::snprintf(name, sizeof name, "slot%u.kfs", static_cast<unsigned>(slot));
+    std::array<char, save_name_capacity> name;
+    std::array<char, pending_name_capacity> pending;
+    std::snprintf(name.data(), name.size(), "slot%u.kfs", static_cast<unsigned>(slot));
     int file = -1;
     for (unsigned attempt = 0; attempt < pending_name_attempts && file < 0; ++attempt) {
-        std::snprintf(pending, sizeof pending, ".slot%u.%llx.%u.tmp", static_cast<unsigned>(slot),
+        std::snprintf(pending.data(), pending.size(), ".slot%u.%llx.%u.tmp", static_cast<unsigned>(slot),
             static_cast<unsigned long long>(SDL_GetTicksNS()), ++pending_serial);
-        file = ::openat(save_directory, pending, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
+        file = ::openat(save_directory, pending.data(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
         if (file < 0 && errno != EEXIST)
             return io_error();
     }
@@ -326,11 +333,11 @@ SaveFileResult save_file_write(SaveSlot slot, const u8 *data, std::size_t size) 
         result = io_error();
     if (::close(file) != 0)
         result = io_error();
-    if (result == SaveFileResult::Ok && ::renameat(save_directory, pending, save_directory, name) != 0)
+    if (result == SaveFileResult::Ok && ::renameat(save_directory, pending.data(), save_directory, name.data()) != 0)
         result = io_error();
     if (result != SaveFileResult::Ok) {
         // Only the uniquely created, unpublished temporary file is removed.
-        ::unlinkat(save_directory, pending, 0);
+        ::unlinkat(save_directory, pending.data(), 0);
         return result;
     }
     // The rename is atomic; synchronizing its directory makes it durable too.

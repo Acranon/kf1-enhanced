@@ -1,9 +1,11 @@
+#include <kf/platform/prelude.h>
 #include <kf/game/audio.h>
-#include <kf/lib/null.h>
-#include <kf/lib/bool.h>
-
-#include <kf/game/player.h>
 #include <kf/game/game.h>
+#include <kf/game/player.h>
+#include <kf/lib/null.h>
+
+#include <array>
+
 static constexpr unsigned enemy_image_number_offset = 7;
 static constexpr unsigned enemy_image_path_capacity = 14, person_image_path_capacity = 15;
 static constexpr unsigned person_image_number_offset = 8;
@@ -25,9 +27,9 @@ enum {
     PLAYER_HARP_FLOOR3_HOLD_COUNTDOWN = 270
 };
 
-char enemy_info_image_path_template[enemy_image_path_capacity] = "ENE0/EI00.TIM";
+std::array<char, enemy_image_path_capacity> enemy_info_image_path_template = {"ENE0/EI00.TIM"};
 
-char person_image_path_template[person_image_path_capacity] = "PRSN/PER00.TIM";
+std::array<char, person_image_path_capacity> person_image_path_template = {"PRSN/PER00.TIM"};
 
 void actor_show_info_image(const KfActor *actor)
 {
@@ -36,7 +38,7 @@ void actor_show_info_image(const KfActor *actor)
     enemy_info_image_path_template[3] = '0' + kf_enum_encode<u8>(player_state.progress_state.current_floor);
     enemy_info_image_path_template[enemy_image_number_offset] = '0' + actor->definition_id / 10;
     enemy_info_image_path_template[enemy_image_number_offset + 1] = '0' + actor->definition_id % 10;
-    screen_show_image_until_input(enemy_info_image_path_template);
+    screen_show_image_until_input(enemy_info_image_path_template.data());
 }
 
 void map_event_show_person_image(const KfMapEvent *event)
@@ -45,7 +47,7 @@ void map_event_show_person_image(const KfMapEvent *event)
     render_frame(NULL, NULL);
     person_image_path_template[person_image_number_offset] = '0' + kf_enum_encode<u8>(event->character_id) / 10;
     person_image_path_template[person_image_number_offset + 1] = '0' + kf_enum_encode<u8>(event->character_id) % 10;
-    screen_show_image_until_input(person_image_path_template);
+    screen_show_image_until_input(person_image_path_template.data());
 }
 
 void player_use_item(KfObjectId item_id)
@@ -57,12 +59,15 @@ void player_use_item(KfObjectId item_id)
     s32 distance;
     s32 index;
     s16 slot;
-    KfBool8 used = false;
+    bool used = false;
 
     const auto reach = vector_yaw_probe_xz(player_state.camera_position,
         player_state.camera_rotation.vy, MAP_INTERACTION_PROBE_DISTANCE);
     index = 0;
     switch (item_id) {
+    default:
+        // Unusable items reach the existing "nothing happens" notification.
+        break;
     case KF_ITEM_KEY_OF_THE_DEAD:
     case KF_ITEM_RAITO_FAMILY_KEY:
     case KF_ITEM_DUNGEON_KEY:
@@ -75,6 +80,9 @@ void player_use_item(KfObjectId item_id)
             }
             object = &map_object_state.objects[index];
             switch (object->object_id) {
+            default:
+                // Only the listed doors and lids accept keys.
+                break;
             case KF_MAP_OBJECT_BEVELED_WOODEN_LID:
             case KF_MAP_OBJECT_FLAT_WOODEN_LID:
             case KF_MAP_OBJECT_STONE_CONTAINER_LID:
@@ -135,7 +143,7 @@ void player_use_item(KfObjectId item_id)
         }
         break;
     case KF_ITEM_HARP:
-        record = effect_state.records;
+        record = effect_state.records.data();
         for (slot = KF_EFFECT_CAPACITY - 1; slot != -1; slot--, record++) {
             if (record->type == KF_EFFECT_SLOT_FREE) {
                 continue;
@@ -146,12 +154,12 @@ void player_use_item(KfObjectId item_id)
             }
         }
         if (player_state.progress_state.current_floor == KF_FLOOR_2) {
-            effect_pool_spawn_typed(
+            effect_pool_spawn_floor_deformation(
                 PLAYER_HARP_FLOOR2_FIRST_SEGMENT, PLAYER_HARP_FLOOR2_SEGMENT_COUNT,
                 PLAYER_HARP_PROGRESS_PER_UPDATE, PLAYER_HARP_CELL_STAGGER,
                 PLAYER_HARP_FLOOR2_SWEEP_UPDATES, PLAYER_HARP_FLOOR2_HOLD_COUNTDOWN);
         } else if (player_state.progress_state.current_floor == KF_FLOOR_3) {
-            effect_pool_spawn_typed(
+            effect_pool_spawn_floor_deformation(
                 PLAYER_HARP_FLOOR3_FIRST_SEGMENT, PLAYER_HARP_FLOOR3_SEGMENT_COUNT,
                 PLAYER_HARP_PROGRESS_PER_UPDATE, PLAYER_HARP_CELL_STAGGER,
                 PLAYER_HARP_FLOOR3_SWEEP_UPDATES, PLAYER_HARP_FLOOR3_HOLD_COUNTDOWN);

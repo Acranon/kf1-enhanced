@@ -1,15 +1,17 @@
+#include <kf/platform/prelude.h>
 #include <kf/game/audio.h>
-#include <kf/lib/null.h>
-#include <kf/lib/bool.h>
-#include <kf/game/graphics.h>
-#include <kf/lib/resource_file.h>
-#include <kf/game/save.h>
-#include <kf/game/player.h>
-#include <kf/platform/saves.hpp>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/player.h>
+#include <kf/game/save.h>
+#include <kf/lib/null.h>
+#include <kf/lib/resource_file.h>
+#include <kf/platform/saves.h>
+
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace {
 constexpr int save_no_equipment_id = 255;
@@ -41,8 +43,8 @@ enum {
     IMAGE_WAIT_INITIAL_BRIGHTNESS = 32,
     IMAGE_WAIT_MAX_BRIGHTNESS = 127
 };
-char talk_image_path_template[talk_image_path_capacity] = "TALK/C00/T00000.TIM";
-KfBool32 menu_load_message_image(s32 message_id);
+std::array<char, talk_image_path_capacity> talk_image_path_template = {"TALK/C00/T00000.TIM"};
+bool menu_load_message_image(s32 message_id);
 void screen_show_image_until_input(const char *path);
 
 // Version one lists every persisted field explicitly. Runtime pointers are
@@ -50,8 +52,8 @@ void screen_show_image_until_input(const char *path);
 struct SavedGameState {
     KfPlayerState player;
     KfMapSavedWorld world;
-    u8 stock[KF_ITEM_STOCK_BANK_COUNT][KF_ITEM_COUNT];
-    KfMagicLearningState learned[KF_MAGIC_RECORD_COUNT];
+    std::array<std::array<u8, KF_ITEM_COUNT>, KF_ITEM_STOCK_BANK_COUNT> stock;
+    std::array<KfMagicLearningState, KF_MAGIC_RECORD_COUNT> learned;
 };
 enum class SaveCodecMode { Read, Write };
 struct SaveCodec {
@@ -63,8 +65,6 @@ struct SaveCodec {
 
 template <typename T, typename Wire>
 static void save_assign(T &field, Wire value) { field = static_cast<T>(value); }
-template <typename Enum, typename Storage, typename Wire>
-static void save_assign(KfEnumStorage<Enum, Storage> &field, Wire value) { field = static_cast<Enum>(value); }
 
 template <typename Wire, typename T>
 static void save_field(SaveCodec &io, T &field) {
@@ -79,17 +79,16 @@ static void save_field(SaveCodec &io, T &field) {
             bits = static_cast<Wire>(field);
         else
             bits = kf_enum_encode<Wire>(field);
-        for (unsigned i = 0; i < sizeof(Wire); ++i)
+        for (std::size_t i = 0; i < sizeof(Wire); ++i)
             io.data[io.position++] = bits >> (i * 8);
     } else {
-        for (unsigned i = 0; i < sizeof(Wire); ++i)
+        for (std::size_t i = 0; i < sizeof(Wire); ++i)
             bits |= static_cast<u32>(io.data[io.position++]) << (i * 8);
         save_assign(field, static_cast<Wire>(bits));
     }
 }
 
-template <std::size_t Count>
-static void save_bytes(SaveCodec &io, u8 (&bytes)[Count]) {
+static void save_bytes(SaveCodec &io, std::span<u8> bytes) {
     for (u8 &byte : bytes)
         save_field<u8>(io, byte);
 }
@@ -171,7 +170,7 @@ static void save_state_fields(SaveCodec &io, SavedGameState &state) {
     SAVE_FIELD(s32, camera_position.vx);
     SAVE_FIELD(s32, camera_position.vy);
     SAVE_FIELD(s32, camera_position.vz);
-    SAVE_FIELD(s32, floor_height);
+    SAVE_FIELD(s32, foot_height);
     SAVE_FIELD(s16, camera_rotation.vx);
     SAVE_FIELD(s16, camera_rotation.vy);
     SAVE_FIELD(s16, camera_rotation.vz);
@@ -210,7 +209,7 @@ static u32 save_checksum(const u8 *data, std::size_t size) {
     u32 crc = ~u32{0};
     for (std::size_t i = 0; i < size; ++i) {
         crc ^= data[i];
-        for (unsigned bit = 0; bit < 8; ++bit)
+        for (std::size_t bit = 0; bit < 8; ++bit)
             crc = (crc >> 1) ^ (crc32_reflected_polynomial & (0u - (crc & 1)));
     }
     return ~crc;
@@ -224,7 +223,7 @@ static bool save_world_valid(const KfMapSavedWorld &world) {
         if (floor.records[0] != 1)
             return false;
         std::size_t position = 1;
-        for (unsigned i = 0; i < KF_MAP_EVENT_CAPACITY; ++i, position += saved_event_bytes) {
+        for (std::size_t i = 0; i < KF_MAP_EVENT_CAPACITY; ++i, position += saved_event_bytes) {
             const auto state = kf_enum_decode<KfMapEventState>(floor.records[position]);
             const auto stage = floor.records[position + saved_event_stage_offset];
             if (floor.records[position + saved_event_stage_limit_offset] > KF_DIALOGUE_STAGE_COUNT || stage > KF_DIALOGUE_STAGE_COUNT
@@ -234,11 +233,11 @@ static bool save_world_valid(const KfMapSavedWorld &world) {
         const unsigned actors = floor.records[position++];
         if (actors > KF_ACTOR_CAPACITY)
             return false;
-        for (unsigned i = 0; i < actors; ++i, position += saved_actor_bytes)
+        for (std::size_t i = 0; i < actors; ++i, position += saved_actor_bytes)
             if (floor.records[position] >= KF_ACTOR_CAPACITY)
                 return false;
-        const u8 *object_ids = floor.records + position;
-        for (unsigned i = 0; i < KF_MAP_OBJECT_CAPACITY; ++i) {
+        const u8 *object_ids = floor.records.data() + position;
+        for (std::size_t i = 0; i < KF_MAP_OBJECT_CAPACITY; ++i) {
             const auto id = floor.records[position++];
             if (id >= KF_MAP_OBJECT_DEFINITION_COUNT && id != kf_enum_encode<u8>(KF_OBJECT_NONE))
                 return false;
@@ -253,7 +252,7 @@ static bool save_world_valid(const KfMapSavedWorld &world) {
         constexpr unsigned drop_bytes = KF_MAP_OBJECT_EFFECT_GROUP_CAPACITY * (saved_gold_drop_bytes + 2 * saved_item_drop_bytes);
         if (objects > KF_MAP_OBJECT_EFFECT_FIRST || objects * link_record_bytes + drop_bytes > sizeof floor.records - position)
             return false;
-        for (unsigned i = 0; i < objects; ++i, position += link_record_bytes) {
+        for (std::size_t i = 0; i < objects; ++i, position += link_record_bytes) {
             const unsigned index = floor.records[position];
             if (index >= KF_MAP_OBJECT_EFFECT_FIRST)
                 return false;
@@ -261,12 +260,12 @@ static bool save_world_valid(const KfMapSavedWorld &world) {
             if (id == kf_enum_encode<u8>(KF_OBJECT_NONE))
                 return false;
             KfMapObjectLink link{};
-            std::memcpy(&link, floor.records + position + 1, sizeof link);
+            std::memcpy(&link, floor.records.data() + position + 1, sizeof link);
             if (!map_saved_link_valid(map_object_state.definitions.entries[id].behavior_type, link))
                 return false;
         }
-        for (unsigned group = 0; group < 3; ++group) {
-            for (unsigned i = 0; i < KF_MAP_OBJECT_EFFECT_GROUP_CAPACITY; ++i) {
+        for (std::size_t group = 0; group < 3; ++group) {
+            for (std::size_t i = 0; i < KF_MAP_OBJECT_EFFECT_GROUP_CAPACITY; ++i) {
                 if (floor.records[position] >= KF_MAP_COLUMNS || floor.records[position + 1] >= KF_MAP_ROWS)
                     return false;
                 position += group == 0 ? saved_gold_drop_bytes : saved_item_drop_bytes;
@@ -291,7 +290,7 @@ static bool save_state_valid(const SavedGameState &state) {
             || p.motion_state.map_cell.x >= KF_MAP_COLUMNS
             || p.motion_state.map_cell.z >= KF_MAP_ROWS)
         return false;
-    const KfObjectId armor[] = {p.equipped_head_armor_id, p.equipped_body_armor_id,
+    const std::array<KfObjectId, 5> armor = {p.equipped_head_armor_id, p.equipped_body_armor_id,
         p.equipped_shield_id, p.equipped_arm_armor_id, p.equipped_leg_armor_id};
     for (const auto id : armor) {
         const int index = kf_enum_encode<u8>(id) - kf_enum_encode<u8>(KF_ITEM_IRON_MASK);
@@ -327,23 +326,20 @@ static void save_state_apply(const SavedGameState &state) {
     player_state.equipped_arm_armor_record = saved_armor(player_state.equipped_arm_armor_id);
     player_state.equipped_leg_armor_record = saved_armor(player_state.equipped_leg_armor_id);
     map_runtime_state.world_state = state.world;
-    std::memcpy(item_stock, state.stock, sizeof state.stock);
-    for (unsigned i = 0; i < KF_MAGIC_RECORD_COUNT; ++i)
+    item_stock = state.stock;
+    for (std::size_t i = 0; i < KF_MAGIC_RECORD_COUNT; ++i)
         effect_state.magic.entries[i].learned = state.learned[i];
     // The existing load-return path reloads the floor, weapon and selected magic.
 }
 
-constexpr u8 save_magic[] = {'K', 'F', 'J', 'P', 'S', 'A', 'V', 'E'};
+constexpr std::array<u8, 8> save_magic = {'K', 'F', 'J', 'P', 'S', 'A', 'V', 'E'};
 constexpr u32 save_version = 1;
 constexpr std::size_t save_header_bytes = 20;
 struct SaveCatalogEntry { bool occupied; u32 checksum; };
-static SaveCatalogEntry save_catalog[KF_SAVE_SLOT_COUNT];
+static std::array<SaveCatalogEntry, KF_SAVE_SLOT_COUNT> save_catalog;
 
-static bool save_slot_valid(KfSaveSlotId slot) {
-    return slot >= KF_SAVE_SLOT_FIRST && slot <= KF_SAVE_SLOT_THIRD;
-}
-static kf::SaveSlot save_slot_native(KfSaveSlotId slot) {
-    return static_cast<kf::SaveSlot>(kf_enum_encode<s16>(slot));
+static bool save_slot_valid(kf::SaveSlot slot) {
+    return slot >= kf::SaveSlot::First && slot <= kf::SaveSlot::Third;
 }
 static KfSaveSlotSummary save_summary(const SavedGameState &state) {
     const auto &p = state.player;
@@ -353,20 +349,20 @@ static KfSaveSlotSummary save_summary(const SavedGameState &state) {
 }
 
 static kf::SaveFileResult save_read_record(kf::SaveSlot slot, SavedGameState &state, u32 &checksum) {
-    u8 data[kf::save_file_capacity];
+    std::array<u8, kf::save_file_capacity> data;
     std::size_t size;
-    const auto result = kf::save_file_read(slot, data, sizeof data, &size);
+    const auto result = kf::save_file_read(slot, data.data(), data.size(), &size);
     if (result != kf::SaveFileResult::Ok)
         return result;
-    if (size < save_header_bytes || std::memcmp(data, save_magic, sizeof save_magic) != 0)
+    if (size < save_header_bytes || std::memcmp(data.data(), save_magic.data(), save_magic.size()) != 0)
         return kf::SaveFileResult::Invalid;
-    SaveCodec io{data, size, sizeof save_magic, SaveCodecMode::Read, true};
+    SaveCodec io{data.data(), size, sizeof save_magic, SaveCodecMode::Read, true};
     u32 version = 0, payload_size = 0;
     save_field<u32>(io, version);
     save_field<u32>(io, payload_size);
     save_field<u32>(io, checksum);
     if (!io.valid || version != save_version || payload_size != size - save_header_bytes
-            || checksum != save_checksum(data + save_header_bytes, payload_size))
+            || checksum != save_checksum(data.data() + save_header_bytes, payload_size))
         return kf::SaveFileResult::Invalid;
     save_state_fields(io, state);
     return io.valid && io.position == size && save_state_valid(state)
@@ -384,20 +380,20 @@ static KfSaveResult save_failure(kf::SaveFileResult result, bool writing) {
     return result == kf::SaveFileResult::NoSpace ? KF_SAVE_RESULT_NO_SPACE : KF_SAVE_RESULT_FAILED;
 }
 
-KfSaveResult save_system_read_catalog(KfSaveSlotSummary *summaries) {
-    std::memset(summaries, 0, sizeof(*summaries) * KF_SAVE_SLOT_COUNT);
-    std::memset(save_catalog, 0, sizeof save_catalog);
-    for (unsigned i = 0; i < KF_SAVE_SLOT_COUNT; ++i) {
+KfSaveResult save_system_read_catalog(std::array<KfSaveSlotSummary, KF_SAVE_SLOT_COUNT> &summaries) {
+    summaries = {};
+    save_catalog = {};
+    for (std::size_t i = 0; i < summaries.size(); ++i) {
         SavedGameState state{};
         u32 checksum = 0;
-        const auto slot = static_cast<KfSaveSlotId>(i + 1);
-        const auto result = save_read_record(save_slot_native(slot), state, checksum);
+        const auto slot = static_cast<kf::SaveSlot>(i + 1);
+        const auto result = save_read_record(slot, state, checksum);
         if (result == kf::SaveFileResult::Missing)
             continue;
         if (result != kf::SaveFileResult::Ok) {
             summaries[i].state = result == kf::SaveFileResult::Invalid
                 ? KfSaveSlotState::Damaged : KfSaveSlotState::Unavailable;
-            std::fprintf(stderr, "Save slot %u cannot be read (%d); other slots remain available\n",
+            std::fprintf(stderr, "Save slot %zu cannot be read (%d); other slots remain available\n",
                 i + 1, static_cast<int>(result));
             continue;
         }
@@ -407,12 +403,12 @@ KfSaveResult save_system_read_catalog(KfSaveSlotSummary *summaries) {
     return KF_SAVE_RESULT_OK;
 }
 
-KfSaveResult save_system_read_slot(KfSaveSlotId slot) {
+KfSaveResult save_system_read_slot(kf::SaveSlot slot) {
     if (!save_slot_valid(slot))
         return save_failure(kf::SaveFileResult::Invalid, false);
     SavedGameState state{};
     u32 checksum = 0;
-    const auto result = save_read_record(save_slot_native(slot), state, checksum);
+    const auto result = save_read_record(slot, state, checksum);
     if (result != kf::SaveFileResult::Ok)
         return save_failure(result, false);
     const auto &catalog = save_catalog[kf_enum_encode<s16>(slot) - 1];
@@ -422,7 +418,7 @@ KfSaveResult save_system_read_slot(KfSaveSlotId slot) {
     }
     // No live game state is touched until the complete file is decoded and validated.
     save_state_apply(state);
-    kf::automap_load(save_slot_native(slot));
+    kf::automap_load(slot);
     return KF_SAVE_RESULT_OK;
 }
 
@@ -430,36 +426,36 @@ static kf::SaveFileResult save_write_record(kf::SaveSlot slot, u32 &checksum) {
     SavedGameState state{};
     state.player = player_state;
     state.world = map_runtime_state.world_state;
-    std::memcpy(state.stock, item_stock, sizeof state.stock);
-    for (unsigned i = 0; i < KF_MAGIC_RECORD_COUNT; ++i)
+    state.stock = item_stock;
+    for (std::size_t i = 0; i < KF_MAGIC_RECORD_COUNT; ++i)
         state.learned[i] = effect_state.magic.entries[i].learned;
     if (!save_state_valid(state))
         return kf::SaveFileResult::Invalid;
-    u8 data[kf::save_file_capacity];
-    SaveCodec payload{data, sizeof data, save_header_bytes, SaveCodecMode::Write, true};
+    std::array<u8, kf::save_file_capacity> data;
+    SaveCodec payload{data.data(), data.size(), save_header_bytes, SaveCodecMode::Write, true};
     save_state_fields(payload, state);
     if (!payload.valid)
         return kf::SaveFileResult::Invalid;
-    std::memcpy(data, save_magic, sizeof save_magic);
-    SaveCodec header{data, save_header_bytes, sizeof save_magic, SaveCodecMode::Write, true};
+    std::memcpy(data.data(), save_magic.data(), save_magic.size());
+    SaveCodec header{data.data(), save_header_bytes, sizeof save_magic, SaveCodecMode::Write, true};
     u32 version = save_version;
     u32 payload_size = payload.position - save_header_bytes;
-    checksum = save_checksum(data + save_header_bytes, payload_size);
+    checksum = save_checksum(data.data() + save_header_bytes, payload_size);
     save_field<u32>(header, version);
     save_field<u32>(header, payload_size);
     save_field<u32>(header, checksum);
-    return kf::save_file_write(slot, data, payload.position);
+    return kf::save_file_write(slot, data.data(), payload.position);
 }
 
-KfSaveResult save_system_write_slot(KfSaveSlotId slot) {
+KfSaveResult save_system_write_slot(kf::SaveSlot slot) {
     if (!save_slot_valid(slot))
         return save_failure(kf::SaveFileResult::Invalid, true);
     u32 checksum = 0;
-    const auto result = save_write_record(save_slot_native(slot), checksum);
+    const auto result = save_write_record(slot, checksum);
     if (result != kf::SaveFileResult::Ok)
         return save_failure(result, true);
     save_catalog[kf_enum_encode<s16>(slot) - 1] = {true, checksum};
-    kf::automap_save(save_slot_native(slot));
+    kf::automap_save(slot);
     return KF_SAVE_RESULT_OK;
 }
 
@@ -511,9 +507,9 @@ void menu_play_input_sound(KfMenuSoundCue cue)
     kf::sound_note_release(audio_state.bank, sound.program, sound.note);
 }
 
-KfBool32 menu_load_message_image(s32 message_id)
+bool menu_load_message_image(s32 message_id)
 {
-    char path[menu_image_path_capacity] = "TIM/M000.";
+    std::array<char, menu_image_path_capacity> path = {"TIM/M000."};
     u8 *buffer;
 
     if (message_id != MESSAGE_IMAGE_SKIP) {
@@ -521,7 +517,7 @@ KfBool32 menu_load_message_image(s32 message_id)
         buffer = game_graphics_runtime.display_state.asset_load_buffer;
         std::size_t image_size;
         if (resource_file_load_into(buffer,
-                game_graphics_runtime.display_state.asset_load_capacity, path, &image_size) != KF_RESOURCE_LOADED) {
+                game_graphics_runtime.display_state.asset_load_capacity, path.data(), &image_size) != KF_RESOURCE_LOADED) {
             return true;
         }
         tim_upload_images(buffer, image_size);
@@ -532,7 +528,7 @@ KfBool32 menu_load_message_image(s32 message_id)
 void screen_show_image_until_input(const char *path)
 {
     s32 brightness = IMAGE_WAIT_INITIAL_BRIGHTNESS;
-    KfBool8 pressed = false;
+    bool released = false;
     std::size_t image_size;
     if (resource_file_load_into(game_graphics_runtime.display_state.asset_load_buffer,
             game_graphics_runtime.display_state.asset_load_capacity, path, &image_size) != KF_RESOURCE_LOADED) {
@@ -546,9 +542,9 @@ void screen_show_image_until_input(const char *path)
         }
         display_present_system_screen(brightness);
         kf::host_wait_frame();
-        if (pressed == false) {
+        if (released == false) {
             if (kf::host_read_buttons() == 0) {
-                pressed = true;
+                released = true;
             }
         } else if (kf::host_read_buttons() != 0) {
             kf::host_wait_buttons_released();

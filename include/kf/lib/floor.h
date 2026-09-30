@@ -1,8 +1,8 @@
 #ifndef KF_FLOOR_H
 #define KF_FLOOR_H
 
-#include <kf/lib/types.h>
 #include <kf/lib/enum.h>
+#include <kf/lib/types.h>
 
 enum class KfFloorId : s32 {
     KF_FLOOR_1 = 1,
@@ -20,4 +20,4 @@ enum class KfMapVariant : u8 {
     KF_FLOOR5_ALTERNATE_MUSIC_VARIANT = 3
 }; using enum KfMapVariant;
 
-#endif
+#endif // KF_FLOOR_H

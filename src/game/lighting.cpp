@@ -1,9 +1,9 @@
-#include <kf/lib/null.h>
-#include <kf/game/graphics.h>
-
-#include <kf/lib/math.h>
-#include <kf/game/render.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/render.h>
+#include <kf/lib/math.h>
+#include <kf/lib/null.h>
 
 enum {
     LIGHTING_COLOR_BLEND_STEP = 0x400,

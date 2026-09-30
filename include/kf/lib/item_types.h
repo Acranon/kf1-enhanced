@@ -1,9 +1,10 @@
 #ifndef KF_ITEM_TYPES_H
 #define KF_ITEM_TYPES_H
 
-#include <cstddef>
-#include <kf/lib/types.h>
 #include <kf/lib/enum.h>
+#include <kf/lib/types.h>
+
+#include <cstddef>
 
 enum {
     KF_ITEM_COUNT = 80,
@@ -179,4 +180,4 @@ static inline void floor_item_advance_frame(KfFloorItem *item)
     item->animation_frame = next_frame >= item->frame_count ? 0 : next_frame;
 }
 
-#endif
+#endif // KF_ITEM_TYPES_H

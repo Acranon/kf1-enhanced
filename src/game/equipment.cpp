@@ -1,3 +1,4 @@
+#include <kf/platform/prelude.h>
 #include <kf/game/equipment.h>
 #include <kf/lib/math.h>
 

@@ -1,5 +1,7 @@
-#include <kf/renderer/lighting.hpp>
+#include <kf/renderer/lighting.h>
+
 #include <algorithm>
+#include <array>
 
 namespace kf {
 namespace {
@@ -37,21 +39,21 @@ CVECTOR render_fog_color(const LightingEnvironment &environment, CVECTOR color, 
 
 CVECTOR render_light_normal(const LightingEnvironment &environment, const MATRIX &lights,
     const SVECTOR &normal, CVECTOR base, s32 depth_cue) {
-    const s16 direction[] = {normal.vx, normal.vy, normal.vz};
-    const s32 ambient[] = {environment.ambient.r, environment.ambient.g, environment.ambient.b};
-    const s32 far_color[] = {environment.fog.r, environment.fog.g, environment.fog.b};
-    const u8 tint[] = {base.r, base.g, base.b};
-    s32 illumination[3];
-    u8 color[3];
-    for (unsigned row = 0; row < 3; ++row) {
+    const std::array<s16, 3> direction = {normal.vx, normal.vy, normal.vz};
+    const std::array<s32, 3> ambient = {environment.ambient.r, environment.ambient.g, environment.ambient.b};
+    const std::array<s32, 3> far_color = {environment.fog.r, environment.fog.g, environment.fog.b};
+    const std::array<u8, 3> tint = {base.r, base.g, base.b};
+    std::array<s32, 3> illumination;
+    std::array<u8, 3> color;
+    for (std::size_t row = 0; row < 3; ++row) {
         std::int64_t dot = 0;
-        for (unsigned axis = 0; axis < 3; ++axis)
+        for (std::size_t axis = 0; axis < 3; ++axis)
             dot += std::int64_t{lights.m[row][axis]} * direction[axis];
         illumination[row] = std::clamp(static_cast<s32>(dot >> matrix_fraction_bits), 0, lighting_component_max);
     }
-    for (unsigned channel = 0; channel < 3; ++channel) {
+    for (std::size_t channel = 0; channel < 3; ++channel) {
         std::int64_t dot = std::int64_t{environment_color_q4(ambient[channel])} * matrix_unity;
-        for (unsigned light = 0; light < 3; ++light)
+        for (std::size_t light = 0; light < 3; ++light)
             dot += std::int64_t{environment.color_matrix.m[channel][light]} * illumination[light];
         // Preserve the shifted 32-bit result before positive 16-bit saturation.
         const auto intensity_q4 = std::clamp(static_cast<s32>(dot >> matrix_fraction_bits), 0, lighting_component_max);

@@ -12,11 +12,8 @@
 #include <memory>
 #include <sstream>
 #include <type_traits>
-#include <kf/platform/prelude.hpp>
-// Game state lives in the game module's namespace (see cmake/OriginalSources.cmake).
-namespace kf::game {
+#include <kf/platform/prelude.h>
 #include <kf/game/player.h>
-}
 extern "C" {
 #include <lauxlib.h>
 #include <lua.h>
@@ -25,7 +22,6 @@ extern "C" {
 
 namespace kf::ext {
 namespace fs = std::filesystem;
-using kf::game::player_state;
 namespace {
 struct Mod {
     fs::path dir;

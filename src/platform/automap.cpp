@@ -1,4 +1,4 @@
-#include <kf/platform/automap.hpp>
+#include <kf/platform/automap.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

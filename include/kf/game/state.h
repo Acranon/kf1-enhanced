@@ -2,9 +2,11 @@
 #define KF_GAME_STATE_H
 
 #include <kf/game/audio.h>
-#include <kf/lib/types.h>
-#include <kf/lib/overlay.h>
+#include <kf/game/session.h>
 #include <kf/lib/geometry_types.h>
+#include <kf/lib/types.h>
+
+#include <array>
 
 // Floor-local script configuration: indices are not global character IDs.
 inline constexpr u8 KF_FLOOR1_TRIGGER_ACTOR_TILE_X = 7;
@@ -15,7 +17,7 @@ inline constexpr unsigned KF_FLOOR2_REVEAL_EVENT = 3;
 inline constexpr unsigned KF_FLOOR3_FIRE_BALL_EVENT = 1;
 inline constexpr unsigned KF_FLOOR5_WEAPON_TRANSFORM_EVENT = 1;
 extern u32 DAT_80057d24;
-extern KfOverlayResultWord game_next_overlay_mode;
+extern GameResult game_result;
 
 enum {
     KF_GAMEPLAY_SOUND_LIFT_DOOR = 0,
@@ -32,8 +34,8 @@ enum {
     KF_GAMEPLAY_SOUND_KEY_UNLOCK = 12,
     KF_GAMEPLAY_SOUND_COUNT = 13
 };
-extern SoundRef gameplay_sound_refs[KF_GAMEPLAY_SOUND_COUNT];
+extern std::array<SoundRef, KF_GAMEPLAY_SOUND_COUNT> gameplay_sound_refs;
 inline constexpr unsigned talk_image_path_capacity = 20;
-extern char talk_image_path_template[talk_image_path_capacity];
+extern std::array<char, talk_image_path_capacity> talk_image_path_template;
 
-#endif
+#endif // KF_GAME_STATE_H

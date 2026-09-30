@@ -1,11 +1,13 @@
 #ifndef KF_AUDIO_H
 #define KF_AUDIO_H
 
-#include <kf/lib/types.h>
+#include <kf/audio/sound.h>
 #include <kf/lib/enum.h>
-#include <kf/lib/sound_types.h>
 #include <kf/lib/geometry_types.h>
-#include <kf/audio/sound.hpp>
+#include <kf/lib/sound_types.h>
+#include <kf/lib/types.h>
+
+#include <array>
 
 inline constexpr int KF_AUDIO_VOICE_SLOTS = 10;
 inline constexpr int KF_AUDIO_MAX_VOLUME = 0x7f;
@@ -30,7 +32,7 @@ enum class KfAudioPlaybackResult : u32 {
 }; using enum KfAudioPlaybackResult;
 
 typedef struct KfAudioVoiceSlots {
-    kf::SoundVoice voice_ids[KF_AUDIO_VOICE_SLOTS];
+    std::array<kf::SoundVoice, KF_AUDIO_VOICE_SLOTS> voice_ids;
 } KfAudioVoiceSlots;
 
 typedef struct KfAudioState {
@@ -67,4 +69,4 @@ void sound_ref_play(KfAudioPlayback playback, const SoundRef *sound, s16 volume)
 void audio_play_voice(KfAudioPlayback playback,
     kf::SoundBank *bank, s16 program, s16 tone, s16 note, s16 left_volume, s16 right_volume);
 
-#endif
+#endif // KF_AUDIO_H

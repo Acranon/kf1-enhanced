@@ -1,18 +1,19 @@
-#include <kf/platform/prelude.hpp>
-#include <kf/lib/resource_file.h>
-
+#include <kf/platform/prelude.h>
 #include <kf/lib/memory.h>
-#include <kf/platform/files.hpp>
+#include <kf/lib/resource_file.h>
+#include <kf/platform/files.h>
+
+#include <array>
 
 static constexpr std::size_t resource_path_capacity = 128;
 
 kf::FileResult resource_file_open(kf::DataFile *file, const char *relative_path)
 {
-    char path[resource_path_capacity];
-    const int count = snprintf(path, sizeof path, "KF/%s", relative_path);
-    if (count < 0 || static_cast<std::size_t>(count) >= sizeof path)
+    std::array<char, resource_path_capacity> path;
+    const int count = snprintf(path.data(), path.size(), "KF/%s", relative_path);
+    if (count < 0 || static_cast<std::size_t>(count) >= path.size())
         return kf::FileResult::InvalidPath;
-    return kf::data_file_open(file, path);
+    return kf::data_file_open(file, path.data());
 }
 
 KfResourceLoadResult resource_file_try_load_allocated(KfMemoryArena &arena, u8 **destination, const char *relative_path,
@@ -50,9 +51,9 @@ KfResourceLoadResult resource_file_try_load_allocated(KfMemoryArena &arena, u8 *
 
 [[noreturn]] void resource_file_fail(const char *relative_path)
 {
-    char message[192];
-    std::snprintf(message, sizeof message, "Cannot load required resource KF/%s.", relative_path);
-    kf::host_fail(message);
+    std::array<char, 192> message;
+    std::snprintf(message.data(), message.size(), "Cannot load required resource KF/%s.", relative_path);
+    kf::host_fail(message.data());
 }
 
 void resource_file_load_allocated(KfMemoryArena &arena, u8 **destination, const char *relative_path, std::size_t *loaded_size)

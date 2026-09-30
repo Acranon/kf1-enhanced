@@ -1,10 +1,9 @@
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
+#include <kf/lib/graphics.h>
 #include <kf/lib/item_types.h>
 #include <kf/lib/map_types.h>
 #include <kf/lib/math.h>
-#include <kf/lib/graphics.h>
-
-#include <kf/lib/random.hpp>
+#include <kf/lib/random.h>
 
 namespace {
 constexpr std::size_t placement_bytes = 12;
@@ -63,7 +62,7 @@ void item_load_floor_placements(KfFloorItemStorage storage, const KfMapGrid &hei
     kf::host_fail("Floor-item placement list has no terminator");
 }
 
-void render_floor_item(const KfRenderState &view, KfSpriteQuad *sprites,
+void render_floor_item(const KfRenderState &view, std::span<KfSpriteQuad> sprites,
     KfSpriteEnqueue enqueue_sprite, KfFloorItem *item, const MATRIX *lights)
 {
     SVECTOR screen;
@@ -84,7 +83,7 @@ void render_floor_item(const KfRenderState &view, KfSpriteQuad *sprites,
         kf::matrix_multiply_rotation(view.view_matrix, model, model);
         depth_bias = KF_FLOOR_ITEM_FIXED_FACING_DEPTH_BIAS;
     } else {
-        memcpy(model.m, view.pitch_matrix.m, sizeof model.m);
+        model.m = view.pitch_matrix.m;
         depth_bias = KF_FLOOR_ITEM_BILLBOARD_DEPTH_BIAS;
     }
     enqueue_sprite(&sprites[kf_enum_encode<u16>(item->base_sprite_index) + item->animation_frame], depth_bias, KF_SPRITE_DEPTH_CUE_BOOSTED, lights, &model, view.projection);

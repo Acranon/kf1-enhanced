@@ -1,14 +1,16 @@
-#include <kf/lib/random.hpp>
-#include <kf/game/graphics.h>
-
-#include <kf/lib/map_data.h>
-#include <kf/lib/map.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/lib/map.h>
+#include <kf/lib/map_data.h>
+#include <kf/lib/random.h>
 
-static constexpr u8 floor5_boss_death_cleanup_definitions[] = {0, 2, 3, 4};
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+static constexpr std::array<u8, 4> floor5_boss_death_cleanup_definitions = {0, 2, 3, 4};
 
 enum {
     MAP_RESTORE_POSITION_RANDOM_BITS = 15
@@ -51,9 +53,9 @@ void map_restore_floor_state(void)
     const auto floor = kf_enum_encode<u8>(player_state.progress_state.current_floor);
     if (floor < 1 || floor > KF_MAP_SAVED_FLOOR_COUNT)
         kf::host_fail("Invalid restored floor");
-    in = map_runtime_state.world_state.floors[floor - 1].records;
+    in = map_runtime_state.world_state.floors[floor - 1].records.data();
     if (*in++ == 1) {
-        event = map_runtime_state.events;
+        event = map_runtime_state.events.data();
         for (i = 0; i < KF_MAP_EVENT_CAPACITY; i++, event++) {
             event->state = kf_enum_decode<KfMapEventState>(*in++);
             event->dialogue.stage_limit = *in++;
@@ -71,7 +73,7 @@ void map_restore_floor_state(void)
 
         i = *in++;
         if (--i != -1) {
-            KfActor *actors = actor_state.actors;
+            KfActor *actors = actor_state.actors.data();
 
             do {
                 index = *in++;
@@ -233,7 +235,7 @@ void map_restore_floor_state(void)
 
 void map_refresh_dialogue_stages(void)
 {
-    KfMapEvent *event = map_runtime_state.events;
+    KfMapEvent *event = map_runtime_state.events.data();
     u16 index = KF_MAP_EVENT_CAPACITY - 1;
 
     do {
@@ -250,8 +252,8 @@ void map_load_floor(void)
                        player_state.map_variant);
     map_restore_floor_state();
     map_refresh_dialogue_stages();
-    effect5_texture_cache_prepare(player_state.progress_state.current_floor);
-    game_graphics_runtime.effect_color_matrix = color_matrix_table[kf_enum_encode<s32>(KF_GAME_COLOR_WHITE)];
+    render_prepare_actor_textures(player_state.progress_state.current_floor);
+    game_graphics_runtime.hud_model_color_matrix = color_matrix_table[kf_enum_encode<s32>(KF_GAME_COLOR_WHITE)];
 }
 
 void map_load_floor_wrapper(void)

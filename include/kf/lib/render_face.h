@@ -1,10 +1,30 @@
 #ifndef KF_LIB_RENDER_FACE_H
 #define KF_LIB_RENDER_FACE_H
-#include <kf/renderer/renderer.hpp>
-#include <kf/platform/host.hpp>
-#include <kf/lib/tmd.h>
 
-using KfFaceShading = kf::FaceShading;
+#include <kf/lib/tmd.h>
+#include <kf/platform/host.h>
+#include <kf/renderer/renderer.h>
+
+#include <array>
+#include <initializer_list>
+#include <optional>
+
+// A visible face owns its projected corners; no animation-scratch pointers escape.
+struct KfProjectedFace {
+    std::array<KfScreenVertex, 4> corners;
+    kf::FaceShape shape;
+
+    void complete_quad(const KfScreenVertex &fourth);
+    kf::DrawFace draw_face() const;
+    s32 ordering_depth() const;
+    s32 average_fog() const;
+    s16 fog(unsigned corner) const { return corners[corner].p2; }
+};
+
+std::optional<KfProjectedFace> render_projected_triangle(
+    std::span<const KfScreenVertex, KF_PROJECTED_VERTEX_CAPACITY> vertices,
+    u16 first, u16 second, u16 third);
+void render_face_uvs(kf::DrawFace &face, std::initializer_list<u16> texcoords);
 
 // PC extension: faces that reach behind the camera, or whose corners project past
 // the screen-coordinate range, get saturated coordinates that no longer show
@@ -42,16 +62,16 @@ inline std::int64_t render_face_winding(const KfScreenVertex *a,
         return area > 0 ? 1 : area < 0 ? -1 : 0;
     }
     // Retail tests the projected coordinates, including their saturation.
-    const std::int64_t ab_x = b->sxy.vector.vx - a->sxy.vector.vx;
-    const std::int64_t ab_y = b->sxy.vector.vy - a->sxy.vector.vy;
-    const std::int64_t ac_x = c->sxy.vector.vx - a->sxy.vector.vx;
-    const std::int64_t ac_y = c->sxy.vector.vy - a->sxy.vector.vy;
+    const std::int64_t ab_x = b->position.vx - a->position.vx;
+    const std::int64_t ab_y = b->position.vy - a->position.vy;
+    const std::int64_t ac_x = c->position.vx - a->position.vx;
+    const std::int64_t ac_y = c->position.vy - a->position.vy;
     return ab_x * ac_y - ab_y * ac_x;
 }
 
 inline kf::BlendMode render_texture_blend(u16 page)
 {
-    constexpr kf::BlendMode modes[] = {kf::BlendMode::average, kf::BlendMode::add,
+    constexpr std::array<kf::BlendMode, 4> modes = {kf::BlendMode::average, kf::BlendMode::add,
         kf::BlendMode::subtract, kf::BlendMode::add_quarter};
     return modes[(page >> kf::texture_blend_shift) & kf::texture_blend_mask];
 }
@@ -71,8 +91,8 @@ inline void render_face_vertex(kf::DrawFace *face, unsigned index, const KfScree
         out.x = vertex->fx;
         out.y = vertex->fy;
     } else {
-        out.x = vertex->sxy.vector.vx;
-        out.y = vertex->sxy.vector.vy;
+        out.x = vertex->position.vx;
+        out.y = vertex->position.vy;
     }
     out.w = kf::render_perspective ? vertex->w : 0.0f;
     // cz = 0 marks camera-fixed and orthographic vertices (w = 0: HUD models such
@@ -90,12 +110,12 @@ inline void render_face_uv(kf::DrawFace *face, unsigned index, u16 uv)
     face->vertices[index].v = (uv >> kf::packed_uv_component_bits) / kf::texture_uv_scale;
 }
 
-inline void render_face_submit(kf::DrawFace *face, const CVECTOR *colors,
-    KfFaceShading shading, s32 depth)
+inline void render_face_submit(kf::DrawFace *face, std::span<const CVECTOR> colors,
+    kf::FaceShading shading, s32 depth)
 {
     const float divisor = face->material.kind == kf::SurfaceKind::Texture ? kf::texture_color_unity : kf::color8_scale;
-    for (unsigned i = 0; i < static_cast<unsigned>(face->shape); ++i) {
-        const auto &color = colors[shading == KfFaceShading::Flat ? 0 : i];
+    for (std::size_t i = 0; i < static_cast<unsigned>(face->shape); ++i) {
+        const auto &color = colors[shading == kf::FaceShading::Flat ? 0 : i];
         face->vertices[i].r = color.r / divisor;
         face->vertices[i].g = color.g / divisor;
         face->vertices[i].b = color.b / divisor;
@@ -122,4 +142,5 @@ inline void render_face_uv_rectangle(kf::DrawFace *face, u8 u, u8 v, u8 right, u
     face->vertices[0].v = face->vertices[1].v = v / kf::texture_uv_scale;
     face->vertices[2].v = face->vertices[3].v = bottom / kf::texture_uv_scale;
 }
-#endif
+
+#endif // KF_LIB_RENDER_FACE_H

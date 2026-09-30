@@ -5,10 +5,10 @@
 #include <backends/imgui_impl_sdl3.h>
 #include <imgui.h>
 #include <imgui_internal.h>   // FindRenderedTextEnd
-#include <kf/platform/host.hpp>
-#include <kf/platform/languages.hpp>
-#include <kf/platform/translation.hpp>
-#include <kf/renderer/renderer.hpp>
+#include <kf/platform/host.h>
+#include <kf/platform/language_runtime.h>
+#include <kf/platform/translation_ppf.h>
+#include <kf/renderer/renderer.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

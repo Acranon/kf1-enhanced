@@ -1,46 +1,40 @@
-#include <stdarg.h>
-
-#include <kf/game/menu.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/game.h>
+#include <kf/game/menu.h>
 
-void func_80036e30(void)
-{
-
+namespace {
+class MenuSession {
+public:
+    MenuSession() : previous_input(kf::host_set_input_context(kf::InputContext::Menu))
+    {
+        animation_cache_release_all();
+    }
+    MenuSession(const MenuSession &) = delete;
+    MenuSession &operator=(const MenuSession &) = delete;
+    ~MenuSession()
+    {
+        player_clear_motion();
+        kf::host_set_input_context(previous_input);
+    }
+private:
+    kf::InputContext previous_input;
+};
 }
 
-static u32 menu_enter_mode_impl(KfMenuMode menu_mode, int argument)
+KfMenuOutcome menu_open_root()
 {
-    u32 result;
-    const auto input_context = kf::host_set_input_context(kf::InputContext::Menu);
-
-    pool_release_all();
-    switch (menu_mode) {
-    case KF_MENU_MODE_ROOT:
-        result = menu_root();
-        break;
-    case KF_MENU_MODE_ITEM_PICKUP: {
-        KfObjectId item_id;
-
-        item_id = kf_enum_decode<KfObjectId>(argument);
-        result = kf_enum_encode<u32>(item_pickup_confirm(item_id));
-        break;
-    }
-    case KF_MENU_MODE_SHOP: {
-        KfItemStockBank shop_bank;
-
-        shop_bank = kf_enum_decode<KfItemStockBank>(argument);
-        item_menu_root(shop_bank);
-        result = 0;
-        break;
-    }
-    }
-    player_clear_motion();
-    kf::host_set_input_context(input_context);
-    return result;
+    const MenuSession session;
+    return menu_root();
 }
 
-u32 menu_enter_mode(KfMenuMode mode) { return menu_enter_mode_impl(mode, 0); }
-u32 menu_enter_mode(KfMenuMode mode, KfObjectId id)
-{ return menu_enter_mode_impl(mode, static_cast<int>(id)); }
-u32 menu_enter_mode(KfMenuMode mode, KfItemStockBank bank)
-{ return menu_enter_mode_impl(mode, static_cast<int>(bank)); }
+KfMenuResult menu_confirm_pickup(KfObjectId item)
+{
+    const MenuSession session;
+    return item_pickup_confirm(item);
+}
+
+void menu_open_shop(KfItemStockBank bank)
+{
+    const MenuSession session;
+    shop_menu_root(bank);
+}

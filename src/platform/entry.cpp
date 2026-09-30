@@ -1,38 +1,53 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <kf/platform/host.hpp>
-#include <kf/platform/input.hpp>
-#include <kf/platform/files.hpp>
-#include <kf/platform/disc.hpp>
-#include <kf/platform/languages.hpp>
-#include <kf/platform/translation.hpp>
-#include <kf/platform/saves.hpp>
-#include <kf/platform/prelude.hpp>
-// Game sources compile inside namespace kf::game (cmake/OriginalSources.cmake), so
-// the label pointers the menus read are kf::game::menu_glyphs.
-namespace kf::game {
-#include <kf/game/menu_glyphs.h>
-}
+#include <kf/platform/host.h>
+#include <kf/platform/input.h>
+#include <kf/platform/files.h>
+#include <kf/platform/disc.h>
+#include <kf/platform/language_runtime.h>
+#include <kf/platform/translation_ppf.h>
+#include <kf/platform/saves.h>
 #if KF_EXT
-#include <kf/ext/ext.hpp>
+#include <kf/ext/ext.h>
 #endif
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
 #ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#include <kf/platform/assets.hpp>
+#include <kf/platform/assets.h>
 
-extern "C" EMSCRIPTEN_KEEPALIVE int kf_extract_disc(const char *source, const char *destination) {
-    return kf::disc_extract(source, destination);
+#include <emscripten.h>
+
+extern "C" EMSCRIPTEN_KEEPALIVE int kf_extract_disc(const char *source, const char *destination,
+                                                  const char *code) {
+    kf::Language language;
+    return kf::language_parse(code, &language) && kf::disc_extract(source, destination, language);
 }
-extern "C" EMSCRIPTEN_KEEPALIVE const char *kf_retail_files_hash() {
-    return kf::retail_files_sha256;
+extern "C" EMSCRIPTEN_KEEPALIVE int kf_prepare_resources(const char *source, const char *destination,
+                                                       const char *code) {
+    kf::Language language;
+    return kf::language_parse(code, &language) && kf::disc_prepare_directory(source, destination, language);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE const char *kf_resource_files_hash(const char *code) {
+    kf::Language language;
+    return kf::language_parse(code, &language) ? kf::assets_language_hash(language) : "";
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int kf_request_language(const char *code) {
+    kf::Language language;
+    return kf::language_parse(code, &language) && kf::language_request(language);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE const char *kf_current_language() {
+    return kf::language_code(kf::game_language());
 }
 EM_JS(void, browser_game_started, (), { Module['gameStarted'](); });
 #endif
+
+#include <kf/cutscene/playback.h>
+#include <kf/game/session.h>
 
 namespace {
 std::filesystem::path native_path(const char *path) {
@@ -240,9 +255,6 @@ bool prepare_release_data(const char *dropped) {
 #endif
 }
 
-extern "C" kf::AppMode kf_run_game();
-extern "C" void kf_run_opening(kf::AppMode mode);
-
 int main(int argc, char **argv) {
 #if KF_EXT
     kf::ext::console_start();
@@ -261,7 +273,8 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--data") == 0 && i + 1 < argc)
             data = argv[++i];
-        else if ((std::strcmp(argv[i], "--data-ja") == 0 || std::strcmp(argv[i], "--data-en") == 0) && i + 1 < argc)
+        else if ((std::strcmp(argv[i], "--data-ja") == 0 || std::strcmp(argv[i], "--data-en") == 0 ||
+                  std::strcmp(argv[i], "--japanese-data") == 0) && i + 1 < argc)
             language_data.push_back(argv[++i]);
         else if (std::strcmp(argv[i], "--language") == 0 && i + 1 < argc && kf::language_parse(argv[i + 1], &language)) {
             language_selected = true;
@@ -292,15 +305,27 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+    if (!language_selected) {
+        const char *code = std::getenv("KF_LANGUAGE");
+        language_selected = code && kf::language_parse(code, &language);
+    }
     const bool data_selected = data || !language_data.empty();
-    if ((disc && data_selected) || (!disc && (extracted || extract_only))) {
-        std::fprintf(stderr, "Use --data for existing files, or --disc with optional --extract-to/--extract-only.\n");
+    if ((disc && data_selected) || (!disc && !data && (extracted || extract_only)) ||
+        (data && extract_only && !extracted)) {
+        std::fprintf(stderr, "Use --data or --disc. To prepare an existing tree, use --data with --extract-to NEW_DIRECTORY.\n");
         return 1;
     }
     if (disc) {
         data = extracted ? extracted : "data";
-        if (!kf::disc_extract(disc, data))
+        if (!kf::disc_extract(disc, data, language))
             return 1;
+        if (extract_only)
+            return 0;
+    }
+    if (data && extracted) {
+        if (!kf::disc_prepare_directory(data, extracted, language))
+            return 1;
+        data = extracted;
         if (extract_only)
             return 0;
     }
@@ -336,28 +361,16 @@ int main(int argc, char **argv) {
         kf::language_request(kf::language_preference);
         kf::language_apply_pending();
     }
-    if (kf::game_language() == kf::Language::English) {
-        kf::game::menu_glyphs::menu_glyphs_use_english();
-        std::printf("English game files: using translated menu labels\n");
-    }
+    std::printf("Starting King's Field (%s).\n", kf::language_name(kf::game_language()));
     if (!kf::save_storage_start(saves))
         kf::host_fail("Cannot initialize save storage. Check browser storage permissions or the selected save directory.");
 #ifdef __EMSCRIPTEN__
     browser_game_started();
 #endif
-    kf::AppMode mode = skip_intro ? kf::AppMode::Gameplay : kf::AppMode::Opening;
+    if (!skip_intro)
+        cutscene_play(Cutscene::Intro);
     for (;;) {
-        switch (mode) {
-        case kf::AppMode::Gameplay:
-            kf::host_set_input_context(kf::InputContext::Gameplay);
-            mode = kf_run_game();
-            break;
-        case kf::AppMode::Opening:
-        case kf::AppMode::Ending:
-            kf::host_set_input_context(kf::InputContext::Opening);
-            kf_run_opening(mode);
-            mode = kf::AppMode::Gameplay;
-            break;
-        }
+        const GameResult result = game_play();
+        cutscene_play(result == GameResult::Completed ? Cutscene::Ending : Cutscene::Intro);
     }
 }

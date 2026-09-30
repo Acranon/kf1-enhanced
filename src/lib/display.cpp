@@ -1,4 +1,4 @@
-#include <kf/platform/prelude.hpp>
+#include <kf/platform/prelude.h>
 #include <kf/lib/graphics.h>
 
 void display_begin_frame(KfDisplayState &display)

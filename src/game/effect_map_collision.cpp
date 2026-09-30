@@ -1,23 +1,26 @@
-#include <kf/lib/map_data.h>
+#include <kf/platform/prelude.h>
 #include <kf/game/collision.h>
 #include <kf/game/effect.h>
 #include <kf/game/game.h>
+#include <kf/lib/map_data.h>
 
-KfCellHeightRecord map_cell_height_records[KF_MAP_CELL_HEIGHT_RECORD_COUNT] = {
-    {500, -2000, 1500, -1250},
-    {1000, -2500, 2000, -1000},
-    {0, -2500, 2000, -1000},
-    {0, -2500, 1000, -1000},
-    {1000, -10000, 2000, -15000},
-    {0, -10000, 2000, -15000},
-    {0, -10000, 1000, -15000},
+#include <array>
+
+std::array<KfCellHeightRecord, KF_MAP_CELL_HEIGHT_RECORD_COUNT> map_cell_height_records = {
+    KfCellHeightRecord{500, -2000, 1500, -1250},
+    KfCellHeightRecord{1000, -2500, 2000, -1000},
+    KfCellHeightRecord{0, -2500, 2000, -1000},
+    KfCellHeightRecord{0, -2500, 1000, -1000},
+    KfCellHeightRecord{1000, -10000, 2000, -15000},
+    KfCellHeightRecord{0, -10000, 2000, -15000},
+    KfCellHeightRecord{0, -10000, 1000, -15000},
 };
 
-static u32 effect_query_collision_targets(VECTOR *position, s32 radius, const KfEffectRecord *effect)
+static KfCollisionResult effect_query_collision_targets(VECTOR *position, s32 radius, const KfEffectRecord *effect)
 {
     switch (effect->type & KF_EFFECT_COLLISION_TARGETS_MASK) {
     default:
-        return 1;
+        return {KfCollisionKind::EffectWithoutTargets};
     case KF_EFFECT_COLLISION_TARGET_ACTORS:
         return collision_query_world(position->vx, position->vy, position->vz, radius, 0,
             KF_COLLISION_SKIP_TERRAIN | KF_COLLISION_SKIP_PLAYER
@@ -56,7 +59,7 @@ static bool effect_within_height_rectangle(const KfCellHeightRecord *record,
     return coordinate >= record->x_min && coordinate <= record->x_max;
 }
 
-static inline u32 effect_collision_in_cell(
+static KfCollisionResult effect_collision_in_cell(
     VECTOR *position, s32 radius, s16 x, s16 z, s32 subz,
     KfEffectRecord *effect)
 {
@@ -70,7 +73,7 @@ static inline u32 effect_collision_in_cell(
     y = position->vy;
     floor = map_floor_height_grid.cells[z][x] * -KF_MAP_HEIGHT_STEP;
     if (floor < y) {
-        return KF_COLLISION_TERRAIN;
+        return {KfCollisionKind::Terrain};
     }
     attr = map_cell_attribute_grid.cells[z][x];
     if (attr != KF_MAP_ATTRIBUTE_NONE) {
@@ -78,7 +81,7 @@ static inline u32 effect_collision_in_cell(
         if (height < 0) {
             height += floor;
             if (y < height) {
-                return KF_COLLISION_TERRAIN;
+                return {KfCollisionKind::Terrain};
             }
         } else {
             record = &map_cell_height_records[height];
@@ -93,6 +96,10 @@ static inline u32 effect_collision_in_cell(
     }
 
     switch (map_collision_grid.cells[z][x]) {
+    case KF_MAP_CELL_FLOOR:
+    case KF_MAP_CELL_STEP:
+        // Full-floor cells need no diagonal/corner rejection.
+        break;
     case KF_MAP_CELL_BLOCKED:
         if ((!map_cell_has_full_floor(map_collision_grid.cells[z + 1][x])
                 || position->vz % KF_MAP_TILE_SIZE < KF_MAP_TILE_CENTER) &&
@@ -101,10 +108,10 @@ static inline u32 effect_collision_in_cell(
             (!map_cell_has_full_floor(map_collision_grid.cells[z][x + 1])
                 || position->vx % KF_MAP_TILE_SIZE < KF_MAP_TILE_CENTER)) {
             if (!map_cell_has_full_floor(map_collision_grid.cells[z][x - 1])) {
-                return KF_COLLISION_TERRAIN;
+                return {KfCollisionKind::Terrain};
             }
             if (KF_MAP_TILE_CENTER < position->vx % KF_MAP_TILE_SIZE) {
-                return KF_COLLISION_TERRAIN;
+                return {KfCollisionKind::Terrain};
             }
         }
         break;
@@ -113,23 +120,23 @@ static inline u32 effect_collision_in_cell(
                 >= position->vz % KF_MAP_TILE_SIZE) {
             break;
         }
-        return KF_COLLISION_TERRAIN;
+        return {KfCollisionKind::Terrain};
     case KF_MAP_CELL_SUM_LE_SIZE:
         if ((KF_MAP_TILE_SIZE + KF_MAP_TILE_CENTER)
                 < position->vx % KF_MAP_TILE_SIZE + position->vz % KF_MAP_TILE_SIZE) {
-            return KF_COLLISION_TERRAIN;
+            return {KfCollisionKind::Terrain};
         }
         break;
     case KF_MAP_CELL_Z_GE_X:
         if (position->vx % KF_MAP_TILE_SIZE
                 > position->vz % KF_MAP_TILE_SIZE + KF_MAP_TILE_CENTER) {
-            return KF_COLLISION_TERRAIN;
+            return {KfCollisionKind::Terrain};
         }
         break;
     case KF_MAP_CELL_SUM_GE_SIZE:
         if (position->vx % KF_MAP_TILE_SIZE + position->vz % KF_MAP_TILE_SIZE
                 < KF_MAP_TILE_CENTER) {
-            return KF_COLLISION_TERRAIN;
+            return {KfCollisionKind::Terrain};
         }
         break;
     }
@@ -137,7 +144,7 @@ static inline u32 effect_collision_in_cell(
     return effect_query_collision_targets(position, radius, effect);
 }
 
-u32 effect_map_collision(VECTOR *position, s32 radius)
+KfCollisionResult effect_map_collision(VECTOR *position, s32 radius)
 {
     KfEffectRecord *effect;
     s16 x;
@@ -149,7 +156,7 @@ u32 effect_map_collision(VECTOR *position, s32 radius)
     subz = position->vz % KF_MAP_TILE_SIZE;
     effect = effect_state.current_record;
     if (x < 0 || x >= KF_MAP_COLUMNS || z < 0 || z >= KF_MAP_ROWS) {
-        return KF_COLLISION_TERRAIN;
+        return {KfCollisionKind::Terrain};
     }
     return effect_collision_in_cell(position, radius, x, z, subz, effect);
 }

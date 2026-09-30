@@ -1,4 +1,4 @@
-#include <kf/lib/random.hpp>
+#include <kf/lib/random.h>
 
 namespace kf {
 static constexpr u32 random_multiplier = 1103515245u;

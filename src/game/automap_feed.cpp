@@ -1,6 +1,6 @@
-// PC extension: publishes the current floor for the automap (kf/platform/automap.hpp).
+// PC extension: publishes the current floor for the automap (kf/platform/automap.h).
 #include <kf/game/game.h>
-#include <kf/platform/automap.hpp>
+#include <kf/platform/automap.h>
 
 namespace {
 constexpr float tile_size = KF_MAP_TILE_SIZE;
@@ -64,7 +64,7 @@ void automap_publish(void)
         return;
     }
     snapshot.floor = floor;
-    const auto *stock = item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)];
+    const auto &stock = item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)];
     snapshot.owns_map = stock[kf_enum_encode<u8>(KF_ITEM_WATCHMAN_MAP)] != 0
         || stock[kf_enum_encode<u8>(KF_ITEM_SORCERER_MAP)] != 0;
     snapshot.player_x = static_cast<float>(player_state.camera_position.vx) / tile_size;
@@ -174,8 +174,8 @@ void automap_publish(void)
 
     for (const auto &event : map_runtime_state.events) {
         if (event.state == KF_MAP_EVENT_ACTIVE)
-            add(kf::AutomapMarkerKind::Npc, static_cast<float>(event.position_x) / tile_size,
-                static_cast<float>(event.position_z) / tile_size, kf_enum_encode<u8>(event.character_id));
+            add(kf::AutomapMarkerKind::Npc, static_cast<float>(event.home_x) / tile_size,
+                static_cast<float>(event.home_z) / tile_size, kf_enum_encode<u8>(event.character_id));
     }
     for (const auto &actor : actor_state.actors) {
         if (actor.slot_state == KF_ACTOR_SLOT_FREE || actor.lifecycle != KF_ACTOR_LIFECYCLE_ACTIVE

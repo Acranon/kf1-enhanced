@@ -1,21 +1,22 @@
 #ifndef KF_GAME_MENU_H
 #define KF_GAME_MENU_H
 
+#include <kf/game/magic.h>
 #include <kf/game/save.h>
+#include <kf/lib/debug.h>
 #include <kf/lib/item.h>
 #include <kf/lib/map.h>
-#include <kf/lib/resource_file.h>
-#include <kf/lib/debug.h>
-#include <kf/renderer/renderer.hpp>
-#include <kf/game/magic.h>
-#include <kf/lib/render_types.h>
 #include <kf/lib/menu_types.h>
+#include <kf/lib/render_types.h>
+#include <kf/lib/resource_file.h>
+#include <kf/renderer/renderer.h>
 
-enum class KfMenuMode : s32 {
-    KF_MENU_MODE_ROOT = 0,
-    KF_MENU_MODE_ITEM_PICKUP = 1,
-    KF_MENU_MODE_SHOP = 2
-}; using enum KfMenuMode;
+#include <array>
+#include <span>
+#include <variant>
+
+enum class KfMenuAction { Close, GameLoaded, ReturnToIntro };
+using KfMenuOutcome = std::variant<KfMenuAction, KfObjectId>;
 
 enum class KfMenuRootChoice : s32 {
     KF_ROOT_CHOICE_NONE = -1,
@@ -67,8 +68,7 @@ enum class KfMenuConfirmKind : s32 {
 
 enum class KfMenuPreviewMode : s32 {
     KF_MENU_PREVIEW_ITEM_MODEL = 0,
-    KF_MENU_PREVIEW_ITEM_DETAIL = 1,
-    KF_MENU_PREVIEW_MAGIC_ICON = 2
+    KF_MENU_PREVIEW_ITEM_DETAIL = 1
 }; using enum KfMenuPreviewMode;
 
 enum class KfTradeMode : s32 {
@@ -101,37 +101,13 @@ enum {
 
 static inline KfMenuResult menu_confirm_result_from_choice(KfMenuConfirmChoice choice)
 {
-    return kf_enum_decode<KfMenuResult>(-kf_enum_encode<s32>(choice));
+    return choice == KF_MENU_CHOICE_ACCEPT ? KF_MENU_RESULT_ACCEPTED : KF_MENU_RESULT_CANCELLED;
 }
 
 enum {
     MENU_CONFIRM_TEXT_X = 96,
     MENU_CONFIRM_ROW_STEP = 20
 };
-
-template <typename Value>
-class KfMenuSelection {
-public:
-    constexpr KfMenuSelection(Value value) : value_(kf_enum_encode<s32>(value)) {}
-    constexpr KfMenuSelection(KfMenuResult result) : value_(kf_enum_encode<s32>(result)) {}
-
-    constexpr s32 encoded_value() const { return value_; }
-    friend constexpr bool operator==(KfMenuSelection lhs, KfMenuSelection rhs)
-    { return lhs.value_ == rhs.value_; }
-
-private:
-    s32 value_;
-};
-
-using ::kf_enum_encode;
-
-template <typename Integer, typename Value>
-constexpr Integer kf_enum_encode(KfMenuSelection<Value> selection)
-{
-    return static_cast<Integer>(selection.encoded_value());
-}
-
-typedef KfMenuSelection<KfEffectKind> KfMagicPanelResult;
 
 enum {
     KF_MENU_SYSTEM_RETURN_ROW = 2,
@@ -203,7 +179,7 @@ enum {
 };
 
 enum {
-    MENU_MARKER_OT_DEPTH = 500,
+    MENU_OVERLAY_OT_DEPTH = 500,
     MENU_CONTENT_OT_DEPTH = 1000,
     MENU_WIDGET_OT_DEPTH = 2000,
     MENU_WINDOW_OT_DEPTH = 2900,
@@ -223,7 +199,7 @@ enum {
 };
 
 typedef struct MenuGlyphRow {
-    s16 codes[MENU_GLYPHS_PER_ROW];
+    std::array<s16, MENU_GLYPHS_PER_ROW> codes;
 } MenuGlyphRow;
 
 typedef struct MenuGlyphString {
@@ -233,7 +209,7 @@ typedef struct MenuGlyphString {
 
 typedef struct MenuWindowLayout {
     MenuGlyphString title;
-    MenuGlyphString rows[MENU_WINDOW_ROW_CAPACITY];
+    std::array<MenuGlyphString, MENU_WINDOW_ROW_CAPACITY> rows;
 } MenuWindowLayout;
 
 typedef struct MenuSpriteDef {
@@ -266,10 +242,10 @@ enum {
 };
 
 typedef struct KfMenuAssets {
-    kf::DrawFace background_quads[KF_DISPLAY_BUFFER_COUNT][MENU_BACKGROUND_QUAD_COUNT];
-    kf::DrawFace mid_depth_quads[KF_DISPLAY_BUFFER_COUNT];
-    kf::DrawFace foreground_quads[KF_DISPLAY_BUFFER_COUNT];
-    kf::DrawFace dialog_quads[KF_DISPLAY_BUFFER_COUNT][MENU_DIALOG_QUAD_COUNT];
+    std::array<std::array<kf::DrawFace, MENU_BACKGROUND_QUAD_COUNT>, KF_DISPLAY_BUFFER_COUNT> background_quads;
+    std::array<kf::DrawFace, KF_DISPLAY_BUFFER_COUNT> magic_artwork_quads;
+    std::array<kf::DrawFace, KF_DISPLAY_BUFFER_COUNT> message_image_quads;
+    std::array<std::array<kf::DrawFace, MENU_DIALOG_QUAD_COUNT>, KF_DISPLAY_BUFFER_COUNT> dialog_quads;
     MenuSpriteDef number_atlas;
     MenuSpriteDef glyph_atlas;
     MenuTileSprite window_backdrop;
@@ -277,7 +253,7 @@ typedef struct KfMenuAssets {
     MenuSpriteDef option_highlight;
     MenuSpriteDef row_background;
     MenuSpriteDef row_confirmed_background;
-    MenuTileSprite list_tiles[MENU_LIST_TILE_COUNT];
+    std::array<MenuTileSprite, MENU_LIST_TILE_COUNT> list_tiles;
     MenuSpriteDef selection_cursor;
 } KfMenuAssets;
 
@@ -290,9 +266,8 @@ typedef struct KfMenuList {
     u8 scroll_offset;
     u8 selected_index;
     u8 cursor_row;
-    u8 glyphs_per_entry;
-    s16 *glyph_rows;
-    u8 *quantities;
+    std::span<const std::array<s16, MENU_GLYPHS_PER_ROW>> glyph_rows;
+    std::span<const u8> quantities;
 } KfMenuList;
 
 extern void menu_list_previous(KfMenuList *list);
@@ -319,86 +294,83 @@ enum {
 
 extern SVECTOR menu_item_preview_rotation;
 extern KfMenuAssets menu_assets;
-extern MenuWindowLayout menu_window_layouts[KF_MENU_WINDOW_LAYOUT_COUNT];
-extern MenuGlyphRow item_name_rows[KF_ITEM_COUNT];
-extern MenuGlyphRow magic_name_rows[KF_MAGIC_PLAYER_COUNT];
-extern u16 item_buy_prices[KF_ITEM_COUNT][KF_ITEM_SHOP_COUNT];
-extern u16 item_sell_prices[KF_ITEM_COUNT][KF_ITEM_SHOP_COUNT];
+extern std::array<MenuWindowLayout, KF_MENU_WINDOW_LAYOUT_COUNT> menu_window_layouts;
+extern std::array<MenuGlyphRow, KF_ITEM_COUNT> item_name_rows;
+extern std::array<MenuGlyphRow, KF_MAGIC_PLAYER_COUNT> magic_name_rows;
+extern std::array<std::array<u16, KF_ITEM_SHOP_COUNT>, KF_ITEM_COUNT> item_buy_prices;
+extern std::array<std::array<u16, KF_ITEM_SHOP_COUNT>, KF_ITEM_COUNT> item_sell_prices;
 enum class KfMenuModelAllocation : s32 {
     KF_MENU_MODEL_RELEASED = 0,
     KF_MENU_MODEL_ALLOCATED = 1
 }; using enum KfMenuModelAllocation;
-extern KfMenuModelAllocation menu_item_model_allocation_pending;
+extern KfMenuModelAllocation menu_item_model_allocation;
 
 extern void item_load_database(void);
-// Reloads the menu layouts, item and spell names and prices from COM/STAT.DAT
-// (after a language change).
-extern void menu_resources_reload(void);
-extern void item_menu_root(KfItemStockBank shop_bank);
+extern void shop_menu_root(KfItemStockBank shop_bank);
 extern KfMenuResult item_pickup_confirm(KfObjectId item_id);
-extern void menu_add_frame_quad(void);
-extern void menu_add_marker_quad(void);
+extern void menu_add_message_image_quad(void);
+extern void menu_add_magic_artwork_quad(void);
 extern void menu_blit_sprite(
     const MenuSpriteDef *sprite, const MenuPoint *position);
 extern void menu_blit_sprite_translucent(
     const MenuSpriteDef *sprite, const MenuPoint *position);
 extern void menu_config_panel(void);
-extern void menu_draw_dialog_frame(
-    const KfSaveSlotSummary *summaries, KfSaveSlotOverlay slot_overlay);
+extern void menu_resources_reload(void);
+extern void menu_draw_save_slots(
+    std::span<const KfSaveSlotSummary> summaries, KfSaveSlotOverlay slot_overlay);
 extern void menu_draw_item_detail(
     KfObjectId item_id, KfItemStockBank shop_bank, KfTradeMode price_mode);
-extern void menu_draw_item_name_frame(KfObjectId item_id);
+extern void menu_draw_pickup_preview(KfObjectId item_id);
 extern void menu_draw_number(
     const MenuSpriteDef *font, const MenuGlyphString *string);
 extern void menu_draw_string(
     const MenuSpriteDef *font, const MenuGlyphString *string);
-extern void menu_draw_name_list(void);
-extern void menu_draw_stats_header(void);
+extern void menu_draw_equipment_names(void);
+extern void menu_draw_status_summary(void);
 extern void menu_draw_status_details(void);
 extern void menu_draw_two_option(
     const MenuGlyphString *accept_label, const MenuGlyphString *decline_label,
     KfMenuConfirmChoice selected_choice, KfMenuConfirmState confirmation);
-extern void menu_draw_window(KfMenuWindowKind window_kind, s32 count, s32 highlight, KfMenuConfirmState confirmation);
+extern void menu_draw_window(KfMenuWindowKind window_kind, s32 row_count, s32 highlight_row, KfMenuConfirmState confirmation);
 extern void menu_draw_window_backdrop(void);
 extern void menu_format_number(
-    s32 value, s32 count, KfFormatPaddingMode padding_mode, s16 *out);
-extern void menu_drop_item(void);
-extern u32 menu_enter_mode(KfMenuMode menu_mode);
-extern u32 menu_enter_mode(KfMenuMode menu_mode, KfObjectId item_id);
-extern u32 menu_enter_mode(KfMenuMode menu_mode, KfItemStockBank shop_bank);
+    s32 value, s32 digit_count, KfFormatPaddingMode padding_mode, std::span<s16> out);
+extern void menu_drop_item_panel(void);
+extern KfMenuOutcome menu_open_root();
+extern KfMenuResult menu_confirm_pickup(KfObjectId item_id);
+extern void menu_open_shop(KfItemStockBank shop_bank);
 extern void menu_equip_select(KfEquipmentMenuCategory equipment_category);
 extern void menu_frame_begin(void);
 extern void menu_item_model_preview(KfObjectId item_id);
 // PC extension: while set, item previews compare equipment totals for this slot.
 extern void menu_set_equipment_compare(KfEquipmentMenuCategory category);
-extern void menu_list_init(KfMenuList *list, KfMenuWindowKind window_kind, s32 row);
-extern KfMenuResult menu_list_interact(
+extern void menu_list_init(KfMenuList *list, KfMenuWindowKind window_kind, s32 title_row);
+extern KfMenuResult menu_list_confirm(
     const KfMenuList *list, KfMenuConfirmKind confirm_kind, KfMenuPreviewMode preview_mode,
     KfObjectId item_id, KfItemStockBank shop_bank, KfTradeMode price_mode);
-extern KfMenuResult menu_list_interact(
-    const KfMenuList *list, KfMenuConfirmKind confirm_kind, KfMenuPreviewMode preview_mode,
-    KfEffectKind magic_id, KfItemStockBank shop_bank, KfTradeMode price_mode);
+extern KfMenuResult menu_list_confirm(
+    const KfMenuList *list, KfMenuConfirmKind confirm_kind, KfEffectKind magic_id);
 extern void menu_list_render(const KfMenuList *list);
 extern KfResourceLoadResult menu_load_item_model(KfObjectId item_id);
-extern KfResourceLoadResult menu_load_item_texture(KfMenuTextureId texture_id);
+extern KfResourceLoadResult menu_load_texture(KfMenuTextureId texture_id);
 extern void menu_release_item_model(void);
 extern KfMenuResult menu_load_panel(void);
-extern KfMagicPanelResult menu_magic_panel(void);
+extern bool menu_magic_panel(void);
 extern void menu_map_viewer(KfObjectId item_id);
-extern void menu_option_root(void);
+extern void menu_equipment_root(void);
 extern void menu_play_input_sound(KfMenuSoundCue cue);
 extern void menu_present_frame(void);
-extern s32 menu_root(void);
+extern KfMenuOutcome menu_root(void);
 extern void menu_save_confirm(void);
-extern KfMenuResult menu_save_load_hub(void);
+extern KfMenuAction menu_system_panel(void);
 extern KfMenuResult menu_save_panel(void);
 extern void menu_spell_select(void);
 extern void menu_status_panel(void);
 extern KfMenuResult menu_two_option_prompt(
-    KfMenuWindowKind window_kind, s32 count, s32 highlight,
-    const KfSaveSlotSummary *summaries);
+    KfMenuWindowKind window_kind, s32 row_count, s32 highlight_row,
+    std::span<const KfSaveSlotSummary> summaries);
 extern void talk_show_dialogue_page(KfFloorId floor, u8 stage, KfCharacterId character_id, u8 page);
 
 void menu_enqueue_background(void);
 
-#endif
+#endif // KF_GAME_MENU_H

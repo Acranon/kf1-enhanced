@@ -2,11 +2,11 @@
 // mod's enabled flag and config table. Unknown keys are preserved.
 #include "internal.hpp"
 #include <cJSON.h>
-#include <kf/audio/sound.hpp>
-#include <kf/platform/host.hpp>
-#include <kf/platform/input.hpp>
-#include <kf/platform/languages.hpp>
-#include <kf/renderer/renderer.hpp>
+#include <kf/audio/sound.h>
+#include <kf/platform/host.h>
+#include <kf/platform/input.h>
+#include <kf/platform/language_runtime.h>
+#include <kf/renderer/renderer.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

@@ -1,14 +1,16 @@
-#include <kf/platform/prelude.hpp>
-#include <stdarg.h>
+#include <kf/platform/prelude.h>
 #include <kf/lib/debug.h>
 
+#include <array>
+#include <stdarg.h>
+
 static constexpr unsigned format_number_capacity = 24;
-static char format_number_storage[format_number_capacity];
+static std::array<char, format_number_capacity> format_number_storage;
 
 char *format_int_dec(s32 value)
 {
     s32 divisor = KF_FORMAT_DECIMAL_HIGHEST_PLACE;
-    char *out = format_number_storage + KF_FORMAT_LEADING_PAD_BYTES;
+    char *out = format_number_storage.data() + KF_FORMAT_LEADING_PAD_BYTES;
     KfFormatDigitState digit_state = KF_FORMAT_DIGITS_LEADING;
     u8 i;
 
@@ -26,14 +28,14 @@ char *format_int_dec(s32 value)
         divisor /= 10;
     }
     *out = '\0';
-    return format_number_storage + KF_FORMAT_LEADING_PAD_BYTES;
+    return format_number_storage.data() + KF_FORMAT_LEADING_PAD_BYTES;
 }
 
 char *format_int_hex(u32 value)
 {
     u32 divisor = KF_FORMAT_HEX_HIGHEST_PLACE;
     KfFormatDigitState digit_state = KF_FORMAT_DIGITS_LEADING;
-    char *out = format_number_storage + KF_FORMAT_LEADING_PAD_BYTES;
+    char *out = format_number_storage.data() + KF_FORMAT_LEADING_PAD_BYTES;
     u8 i;
 
     for (i = 0; i < KF_FORMAT_HEX_DIGITS; i++) {
@@ -50,7 +52,7 @@ char *format_int_hex(u32 value)
         divisor >>= 4;
     }
     *out = '\0';
-    return format_number_storage + KF_FORMAT_LEADING_PAD_BYTES;
+    return format_number_storage.data() + KF_FORMAT_LEADING_PAD_BYTES;
 }
 
 char *format_pad_left(char *string, char pad, u8 width)

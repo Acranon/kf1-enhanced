@@ -1,13 +1,16 @@
+#include <kf/platform/prelude.h>
 #include <kf/game/audio.h>
-#include <kf/lib/random.hpp>
-#include <kf/lib/null.h>
-#include <kf/game/graphics.h>
-
-#include <kf/game/player.h>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <kf/game/game.h>
+#include <kf/game/graphics.h>
+#include <kf/game/player.h>
+#include <kf/lib/null.h>
+#include <kf/lib/random.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 static constexpr s32 PLAYER_REVIVAL_POSITION_X = 64000;
 static constexpr s32 PLAYER_REVIVAL_POSITION_Z = 20000;
@@ -38,17 +41,17 @@ enum {
     PLAYER_DAMAGE_THRESHOLD_MULTIPLIER = 2
 };
 
-SoundRef player_sound_refs[KF_PLAYER_SOUND_COUNT] = {
-    {7, 0, 80},
-    {7, 1, 89},
-    {13, 0, 67}
+std::array<SoundRef, KF_PLAYER_SOUND_COUNT> player_sound_refs = {
+    SoundRef{7, 0, 80},
+    SoundRef{7, 1, 89},
+    SoundRef{13, 0, 67}
 };
 
 s32 player_death_saved_fog_near;
 
 MATRIX player_death_saved_color_matrix;
 
-u8 item_stock[KF_ITEM_STOCK_BANK_COUNT][KF_ITEM_COUNT];
+std::array<std::array<u8, KF_ITEM_COUNT>, KF_ITEM_STOCK_BANK_COUNT> item_stock;
 
 void player_death_begin(void)
 {
@@ -107,16 +110,8 @@ void game_state_initialize(void)
     player_state.poison_timer = KF_PLAYER_STATUS_TIMER_INACTIVE;
     player_state.darkness_timer = KF_PLAYER_STATUS_TIMER_INACTIVE;
     player_state.curse_timer = KF_PLAYER_STATUS_TIMER_INACTIVE;
-    cursor = (u8 *)&map_runtime_state.world_state;
-    count = sizeof(map_runtime_state.world_state) - 1;
-    do {
-        *cursor++ = 0;
-    } while (--count != -1);
-    cursor = (u8 *)&item_stock;
-    count = sizeof(item_stock) - 1;
-    do {
-        *cursor++ = 0;
-    } while (--count != -1);
+    map_runtime_state.world_state = {};
+    item_stock = {};
     item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)][kf_enum_encode<u8>(KF_ITEM_SHORT_SWORD)] = 1;
     item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)][kf_enum_encode<u8>(KF_ITEM_MEDICINAL_HERB)] = 1;
     item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_FIRST_SHOP)][kf_enum_encode<u8>(KF_ITEM_SHORT_SWORD)] = 1;
@@ -177,7 +172,7 @@ void player_death_restart(void)
     if (floor != KF_FLOOR_1) {
         player_state.progress_state.current_floor = KF_FLOOR_1;
         player_state.map_variant = KF_MAP_VARIANT_DEFAULT;
-        pool_release_all();
+        animation_cache_release_all();
         audio_close_vab(audio_state);
         map_load_floor_wrapper();
     }
@@ -190,7 +185,7 @@ void player_death_restart(void)
     player_state.view_rotation_offset = {};
     player_state.previous_map_cell.x = player_state.motion_state.map_cell.x;
     player_state.previous_map_cell.z = player_state.motion_state.map_cell.z;
-    player_state.camera_position.vy = player_state.floor_height - KF_PLAYER_CAMERA_HEIGHT;
+    player_state.camera_position.vy = player_state.foot_height - KF_PLAYER_CAMERA_HEIGHT;
 }
 
 void player_adjust_hp(s32 delta)
@@ -204,11 +199,7 @@ void player_adjust_hp(s32 delta)
         player_death_begin();
         return;
     }
-    if (player_state.vitals.maximum_hp < value) {
-        player_state.vitals.current_hp = player_state.vitals.maximum_hp;
-    } else {
-        player_state.vitals.current_hp = value;
-    }
+    player_state.vitals.current_hp = std::min<s32>(value, player_state.vitals.maximum_hp);
 }
 
 void player_adjust_mp(s32 delta)
@@ -221,11 +212,7 @@ void player_adjust_mp(s32 delta)
         player_state.vitals.current_mp = 0;
         return;
     }
-    if (player_state.vitals.maximum_mp < value) {
-        player_state.vitals.current_mp = player_state.vitals.maximum_mp;
-    } else {
-        player_state.vitals.current_mp = value;
-    }
+    player_state.vitals.current_mp = std::min<s32>(value, player_state.vitals.maximum_mp);
 }
 
 static void player_learn_trained_magic(KfEffectKind spell, s32 required_base_magic)
@@ -263,9 +250,7 @@ void player_compute_combat_stats(KfPlayerState &p)
     p.magic = p.base_magic;
     if ((p.status_effect_flags & KF_PLAYER_STATUS_CURSE) != KF_PLAYER_STATUS_NONE) {
         power = p.physical_power - CURSE_PHYSICAL_POWER_PENALTY;
-        if (power < 0) {
-            power = 0;
-        }
+        power = std::max<s32>(power, 0);
         p.physical_power = power;
     }
     if (p.equipped_weapon_id != KF_OBJECT_NONE) {
@@ -327,6 +312,9 @@ void player_compute_combat_stats(KfPlayerState &p)
         p.fire_defense += armor->fire_defense;
     }
     switch (p.equipped_accessory_id) {
+    default:
+        // Other items (including no accessory) grant no accessory-specific bonus.
+        break;
     case KF_ITEM_LIGHT_RING:
         p.holy_attack += LIGHT_RING_HOLY_ATTACK_BONUS;
         break;
@@ -407,9 +395,7 @@ void player_add_experience(s16 amount)
     u8 level;
 
     player_state.experience += amount;
-    if (player_state.experience > KF_PLAYER_EXPERIENCE_MAX) {
-        player_state.experience = KF_PLAYER_EXPERIENCE_MAX;
-    }
+    player_state.experience = std::min<s32>(player_state.experience, KF_PLAYER_EXPERIENCE_MAX);
     while (player_state.experience >= player_state.next_level_experience) {
         level = player_state.progress_state.level;
         if (player_state.progress_state.level >= KF_PLAYER_LEVEL_MAX) {
@@ -437,27 +423,20 @@ void player_add_experience(s16 amount)
             player_state.base_magic += growth->magic_step;
             player_state.next_level_experience = growth->experience_threshold;
         }
-        if (player_state.vitals.maximum_hp >= KF_PLAYER_VITAL_MAX + 1) {
-            player_state.vitals.maximum_hp = KF_PLAYER_VITAL_MAX;
-        }
-        if (player_state.vitals.maximum_mp >= KF_PLAYER_VITAL_MAX + 1) {
-            player_state.vitals.maximum_mp = KF_PLAYER_VITAL_MAX;
-        }
-        if (player_state.base_physical_power >= KF_PLAYER_POWER_MAX + 1) {
-            player_state.base_physical_power = KF_PLAYER_POWER_MAX;
-        }
-        if (player_state.base_magic >= KF_PLAYER_POWER_MAX + 1) {
-            player_state.base_magic = KF_PLAYER_POWER_MAX;
-        }
+        player_state.vitals.maximum_hp = std::min<s32>(player_state.vitals.maximum_hp, KF_PLAYER_VITAL_MAX);
+        player_state.vitals.maximum_mp = std::min<s32>(player_state.vitals.maximum_mp, KF_PLAYER_VITAL_MAX);
+        player_state.base_physical_power =
+            std::min<s32>(player_state.base_physical_power, KF_PLAYER_POWER_MAX);
+        player_state.base_magic = std::min<s32>(player_state.base_magic, KF_PLAYER_POWER_MAX);
         player_recalculate_combat_stats();
         notify_enqueue(KF_NOTIFICATION_LEVEL_UP);
         sound_ref_play(audio_playback(), &player_sound_refs[KF_PLAYER_SOUND_LEVEL_UP], KF_AUDIO_MAX_VOLUME);
     }
 }
 
-s32 player_calculate_damage_component(s32 base_power, s32 defense, s32 attack)
+s32 player_calculate_damage_component(s32 defender_power, s32 defense, s32 attack)
 {
-    s32 threshold = base_power;
+    s32 threshold = defender_power;
     s32 excess = defense;
 
     if (attack == 0) {
@@ -465,9 +444,7 @@ s32 player_calculate_damage_component(s32 base_power, s32 defense, s32 attack)
     }
     threshold = excess + threshold / PLAYER_DAMAGE_POWER_DIVISOR;
     excess = attack - threshold;
-    if (excess < 0) {
-        excess = 0;
-    }
+    excess = std::max<s32>(excess, 0);
     if (threshold == 0) {
         threshold = 1;
     }
@@ -495,9 +472,8 @@ void player_apply_damage(
     if (((status_effect_flags & KF_PLAYER_STATUS_DARKNESS) != KF_PLAYER_STATUS_NONE)
         && player_state.equipped_accessory_id != KF_ITEM_MOON_AMULET) {
         if (player_state.darkness_timer != KF_PLAYER_STATUS_TIMER_INACTIVE) {
-            if (player_state.darkness_timer < KF_DARKNESS_REAPPLY_TIMER) {
-                player_state.darkness_timer = KF_DARKNESS_REAPPLY_TIMER;
-            }
+            player_state.darkness_timer =
+                std::max<s32>(player_state.darkness_timer, KF_DARKNESS_REAPPLY_TIMER);
         } else {
             player_state.darkness_timer = KF_DARKNESS_DURATION_UPDATES;
         }
@@ -539,9 +515,7 @@ void player_apply_damage(
     loss = (multiplier_tenths * damage) / KF_PLAYER_DAMAGE_MULTIPLIER_ONE;
     if (loss != 0) {
         remaining = player_state.vitals.current_hp - loss;
-        if (remaining <= 0) {
-            remaining = 0;
-        }
+        remaining = std::max<s32>(remaining, 0);
         player_state.vitals.current_hp = remaining;
         if (player_state.update_state != KF_PLAYER_UPDATE_DYING) {
             player_state.update_state = KF_PLAYER_DAMAGE_FRAME_FIRST;

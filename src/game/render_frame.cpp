@@ -1,13 +1,15 @@
+#include <kf/platform/prelude.h>
+#include <kf/game/animation_cache.h>
 #include <kf/game/graphics.h>
-
-#include <kf/lib/geometry_types.h>
-#include <kf/game/render.h>
 #include <kf/game/notify.h>
 #include <kf/game/player.h>
-#include <kf/lib/math.h>
+#include <kf/game/render.h>
 #include <kf/game/state.h>
-#include <kf/game/pool.h>
 #include <kf/game/system.h>
+#include <kf/lib/geometry_types.h>
+#include <kf/lib/math.h>
+
+#include <array>
 #include <kf/lib/map_data.h>
 
 enum {
@@ -18,21 +20,63 @@ enum {
     HUD_CHARGE_UNITS_PER_PIXEL = KF_PLAYER_CHARGE_FULL / HUD_GAUGE_WIDTH
 };
 
-MATRIX render_light_matrices[KF_RENDER_LIGHT_COUNT] = {
-    {{{0, -3600, 0}, {4096, 0, -4096}, {0, 4096, 3000}}, {0, 0, 0}},
-    {{{0, 0, 4096}, {0, 0, 4096}, {0, 0, 0}}, {0, 0, 0}},
-    {{{0, 0, 4096}, {0, 0, 4096}, {0, -4096, 0}}, {0, 0, 0}},
-    {{{4096, 0, 0}, {0, 4096, 0}, {0, 0, 4096}}, {0, 0, 0}},
-    {{{0, 0, -4096}, {3800, 0, -3800}, {-3800, 0, -3800}}, {0, 0, 0}},
-    {{{0, 0, 3800}, {3800, 0, -3800}, {-3800, 0, -3800}}, {0, 0, 0}},
+std::array<MATRIX, KF_RENDER_LIGHT_COUNT> render_light_matrices = {
+    MATRIX{
+        .m = {{
+            {0, -3600, 0},
+            {4096, 0, -4096},
+            {0, 4096, 3000},
+        }},
+        .t = {},
+    },
+    MATRIX{
+        .m = {{
+            {0, 0, 4096},
+            {0, 0, 4096},
+            {0, 0, 0},
+        }},
+        .t = {},
+    },
+    MATRIX{
+        .m = {{
+            {0, 0, 4096},
+            {0, 0, 4096},
+            {0, -4096, 0},
+        }},
+        .t = {},
+    },
+    MATRIX{
+        .m = {{
+            {4096, 0, 0},
+            {0, 4096, 0},
+            {0, 0, 4096},
+        }},
+        .t = {},
+    },
+    MATRIX{
+        .m = {{
+            {0, 0, -4096},
+            {3800, 0, -3800},
+            {-3800, 0, -3800},
+        }},
+        .t = {},
+    },
+    MATRIX{
+        .m = {{
+            {0, 0, 3800},
+            {3800, 0, -3800},
+            {-3800, 0, -3800},
+        }},
+        .t = {},
+    },
 };
 
 void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_null)
 {
     MATRIX model;
     SVECTOR spin;
-    KfHudSprite *status_sprite;
-    KfHudSprite *auxiliary_sprite;
+    KfHudSprite *poison_icon;
+    KfHudSprite *compass_sprite;
     KfNotificationSprite *record;
     s16 i;
 
@@ -47,10 +91,10 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
             solid[i] = map_collision_grid.linear[i] == KF_MAP_CELL_BLOCKED ? 1 : 0;
         kf::host_light_occluders(solid, KF_MAP_COLUMNS, KF_MAP_ROWS, static_cast<float>(KF_MAP_TILE_SIZE));
     }
-    pool_mark_allocated();
+    animation_cache_mark_stale();
     render_map_cells();
-    status_sprite = &hud_sprites[KF_HUD_POISON_ICON];
-    status_sprite->state = KF_SPRITE_HIDDEN;
+    poison_icon = &hud_sprites[KF_HUD_POISON_ICON];
+    poison_icon->state = KF_SPRITE_HIDDEN;
     hud_sprites[KF_HUD_SLOWED_ICON].state = KF_SPRITE_HIDDEN;
     hud_sprites[KF_HUD_DARKNESS_ICON].state = KF_SPRITE_HIDDEN;
     hud_sprites[KF_HUD_CURSE_ICON].state = KF_SPRITE_HIDDEN;
@@ -78,7 +122,7 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
         } else if ((flags & KF_PLAYER_STATUS_DARKNESS) != KF_PLAYER_STATUS_NONE) {
             hud_sprites[KF_HUD_DARKNESS_ICON].state = KF_SPRITE_VISIBLE;
         } else if ((flags & KF_PLAYER_STATUS_POISON) != KF_PLAYER_STATUS_NONE) {
-            status_sprite->state = KF_SPRITE_VISIBLE;
+            poison_icon->state = KF_SPRITE_VISIBLE;
         } else if ((flags & KF_PLAYER_STATUS_SLOWED) != KF_PLAYER_STATUS_NONE) {
             hud_sprites[KF_HUD_SLOWED_ICON].state = KF_SPRITE_VISIBLE;
         }
@@ -93,17 +137,17 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
         hud_sprites[KF_HUD_MAGIC_PANEL].state = KF_SPRITE_HIDDEN;
     }
 
-    auxiliary_sprite = &hud_sprites[KF_HUD_COMPASS];
-    auxiliary_sprite->state = kf_enum_decode<KfSpriteState>(kf_enum_encode<u8>(player_state.compass_enabled));
-    effect_sprites[KF_EFFECT_SPRITE_COMPASS].state = kf_enum_decode<KfSpriteState>(kf_enum_encode<u8>(player_state.compass_enabled));
-    effect_sprites[KF_EFFECT_SPRITE_COMPASS].rotation.vz = -game_graphics_runtime.render_state.view_rotation.vy & KF_ANGLE_WRAP_MASK;
-    render_effect_sprites(&render_light_matrices[KF_RENDER_LIGHT_HUD]);
+    compass_sprite = &hud_sprites[KF_HUD_COMPASS];
+    compass_sprite->state = kf_enum_decode<KfSpriteState>(kf_enum_encode<u8>(player_state.compass_enabled));
+    hud_models[KF_HUD_MODEL_COMPASS].state = kf_enum_decode<KfSpriteState>(kf_enum_encode<u8>(player_state.compass_enabled));
+    hud_models[KF_HUD_MODEL_COMPASS].rotation.vz = -game_graphics_runtime.render_state.view_rotation.vy & KF_ANGLE_WRAP_MASK;
+    render_hud_models(&render_light_matrices[KF_RENDER_LIGHT_HUD]);
 
     game_graphics_runtime.active_render_material = game_graphics_runtime.hud_material;
     game_graphics_runtime.active_render_color.b = game_graphics_runtime.hud_brightness;
     game_graphics_runtime.active_render_color.g = game_graphics_runtime.hud_brightness;
     game_graphics_runtime.active_render_color.r = game_graphics_runtime.hud_brightness;
-    render_hud_gauges(auxiliary_sprite - KF_HUD_COMPASS);
+    render_hud_sprites(compass_sprite - KF_HUD_COMPASS);
 
     notify_effect_update();
 
@@ -118,7 +162,7 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
 
     game_graphics_runtime.active_render_material = game_graphics_runtime.notification_text_material;
     kf::render_camera_fixed = true;   // notifications float in front of the camera
-    record = notification_sprites;
+    record = notification_sprites.data();
     if (record[KF_NOTIFICATION_TEXT_SPRITE].active == KF_SPRITE_VISIBLE) {
         render_enqueue_sprite(&record[KF_NOTIFICATION_TEXT_SPRITE].sprite, 0, KF_SPRITE_DEPTH_CUE_NORMAL, &render_light_matrices[KF_RENDER_LIGHT_NOTIFICATION], &model, game_graphics_runtime.render_state.projection);
     }
@@ -140,7 +184,7 @@ void render_frame(const VECTOR *position_or_null, const SVECTOR *rotation_or_nul
     render_weapon();
     kf::render_camera_fixed = false;
     display_present_frame(game_graphics_runtime.display_state);
-    pool_release_stale();
+    animation_cache_release_stale();
     // World rendering also advances floor sprites and notifications. Pace every
     // caller, including blocking scripts; presentation consumes this deadline.
     frame_pacer_wait();
