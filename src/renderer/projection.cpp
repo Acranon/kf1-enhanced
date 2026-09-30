@@ -88,18 +88,26 @@ ProjectedPoint render_project_point(const MATRIX &model, const Projection &proje
     const s32 fog_numerator = static_cast<s32>(static_cast<u32>(projection.fog_near) * (0u - fog_distance_coefficient));
     const s16 fog_slope = static_cast<s16>(fog_numerator / Projection::fog_reference_distance);
     const std::int64_t fog_q12 = (std::int64_t(scale) * fog_slope + fog_accumulator_bias) >> depth_cue_fraction_bits;
-    const auto precise = [scale](s32 value, s32 center) {
-        const double position = static_cast<double>(std::clamp(value, camera_component_min, camera_component_max)) * scale
-            / 65536.0 + center;
+    // The drawn (sub-pixel) position keeps the fraction the integer transform
+    // drops: each vertex rounding on its own made neighbouring vertices of a
+    // model jitter against each other as the camera moved, so thin faces of
+    // distant models flickered. Integer results for game logic are unchanged.
+    double exact[3];
+    for (unsigned row = 0; row < 3; ++row)
+        exact[row] = (double(model.m[row][0]) * point.vx + double(model.m[row][1]) * point.vy + double(model.m[row][2]) * point.vz)
+            / 4096.0 + model.t[row];
+    // Depths near zero belong to faces the host clips at its near plane; the
+    // floor keeps their interpolation weights finite.
+    constexpr double minimum_perspective_depth = 16;
+    const double exact_depth = std::max(exact[2], minimum_perspective_depth);
+    const auto precise = [&](double value, s32 center) {
+        const double position = value * projection.distance / exact_depth + center;
         return static_cast<float>(std::clamp(position, double(screen_coordinate_min), double(screen_coordinate_max)));
     };
-    // Depths near zero belong to faces the size and depth tests already reject;
-    // the floor keeps their interpolation weights finite.
-    constexpr s32 minimum_perspective_depth = 16;
     return {screen(camera.vx, projection.center_x), screen(camera.vy, projection.center_y),
         depth, static_cast<s32>(std::clamp<std::int64_t>(fog_q12, 0, depth_cue_unity)),
-        precise(camera.vx, projection.center_x), precise(camera.vy, projection.center_y),
-        static_cast<float>(std::max(camera.vz, minimum_perspective_depth)),
-        static_cast<float>(camera.vx), static_cast<float>(camera.vy), static_cast<float>(camera.vz)};
+        precise(exact[0], projection.center_x), precise(exact[1], projection.center_y),
+        static_cast<float>(exact_depth),
+        static_cast<float>(exact[0]), static_cast<float>(exact[1]), static_cast<float>(exact[2])};
 }
 }

@@ -164,6 +164,38 @@ void render_initialize(void)
     pool_reset();
 }
 
+const KfPreciseMapTransform *render_precise_map;
+
+// Exact map cell transform (see KfPreciseMapTransform); integer results are
+// unchanged, only the drawn sub-pixel position and camera coordinates.
+static void render_precise_map_point(const KfPreciseMapTransform &cell, const kf::Projection &projection,
+    const SVECTOR &vertex, KfScreenVertex &out)
+{
+    const s32 local[3] = {vertex.vx, vertex.vy, vertex.vz};
+    const s32 offset[3] = {cell.position.vx, cell.position.vy, cell.position.vz};
+    double world[3];
+    for (int r = 0; r < 3; ++r) {
+        // Quadrant matrices hold 0 and +-4096, so this is exact (and shared
+        // corners of neighbouring cells get identical world positions).
+        s32 rotated = 0;
+        for (int k = 0; k < 3; ++k)
+            rotated += cell.quadrant->m[r][k] * local[k];
+        world[r] = rotated / 4096.0 + offset[r];
+    }
+    double camera[3];
+    for (int r = 0; r < 3; ++r)
+        camera[r] = (cell.view->m[r][0] * world[0] + cell.view->m[r][1] * world[1] + cell.view->m[r][2] * world[2]) / 4096.0;
+    constexpr double minimum_perspective_depth = 16.0;
+    const double depth = std::max(camera[2], minimum_perspective_depth);
+    const double scale = projection.distance / depth;
+    out.fx = static_cast<float>(std::clamp(camera[0] * scale + projection.center_x, -1024.0, 1023.0));
+    out.fy = static_cast<float>(std::clamp(camera[1] * scale + projection.center_y, -1024.0, 1023.0));
+    out.w = static_cast<float>(depth);
+    out.cx = static_cast<float>(camera[0]);
+    out.cy = static_cast<float>(camera[1]);
+    out.cz = static_cast<float>(camera[2]);
+}
+
 void tmd_project_vertices(s32 count, const MATRIX *model, const kf::Projection &projection)
 {
     if (count < 0 || count > KF_PROJECTED_VERTEX_CAPACITY)
@@ -184,6 +216,8 @@ void tmd_project_vertices(s32 count, const MATRIX *model, const kf::Projection &
         projected->cx = point.cx;
         projected->cy = point.cy;
         projected->cz = point.cz;
+        if (render_precise_map && kf::render_subpixel)
+            render_precise_map_point(*render_precise_map, projection, *vertex, *projected);
         projected++;
         vertex++;
     }

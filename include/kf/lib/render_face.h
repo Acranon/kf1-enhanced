@@ -29,6 +29,14 @@ inline std::int64_t render_face_winding(const KfScreenVertex *a,
         const double triple = a->cx * (by * cz - bz * cy) + a->cy * (bz * cx - bx * cz) + a->cz * (bx * cy - by * cx);
         return triple > 0 ? 1 : triple < 0 ? -1 : 0;
     }
+    // Sub-pixel vertices: test the positions actually drawn. Whole-pixel
+    // corners can flip small distant faces' winding, which culls them for a
+    // frame and makes models and wall joins flicker as the camera moves.
+    if (kf::render_subpixel) {
+        const double area = (static_cast<double>(b->fx) - a->fx) * (static_cast<double>(c->fy) - a->fy)
+            - (static_cast<double>(b->fy) - a->fy) * (static_cast<double>(c->fx) - a->fx);
+        return area > 0 ? 1 : area < 0 ? -1 : 0;
+    }
     // Retail tests the projected coordinates, including their saturation.
     const std::int64_t ab_x = b->sxy.vector.vx - a->sxy.vector.vx;
     const std::int64_t ab_y = b->sxy.vector.vy - a->sxy.vector.vy;

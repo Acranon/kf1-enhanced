@@ -153,5 +153,15 @@ extern void render_weapon(void);
 extern void screen_show_image_until_input(const char *path);
 
 extern void tmd_project_vertices(s32 count, const MATRIX *model, const kf::Projection &projection);
+// PC extension: while set (by render_map_cell), tmd_project_vertices computes the
+// sub-pixel positions and camera coordinates of map cells exactly, as
+// view * (position + quadrant * vertex). Neighbouring cells then share
+// bit-identical corners, so distant floors and walls have no pinhole cracks.
+struct KfPreciseMapTransform {
+    const MATRIX *view;
+    const MATRIX *quadrant;
+    SVECTOR position;
+};
+extern const KfPreciseMapTransform *render_precise_map;
 
 #endif

@@ -91,7 +91,11 @@ void render_map_cell(s32 col, s32 row, KfCellVisibility visibility)
     kf::render_place_model(cell_matrix, game_graphics_runtime.render_state.view_matrix, position);
     kf::matrix_multiply_rotation(game_graphics_runtime.render_state.view_matrix, game_graphics_runtime.render_state.quadrant_matrices[orient], cell_matrix);
     tmd_select_object_vertices(tmd_context(), object_index);
+    const KfPreciseMapTransform precise{&game_graphics_runtime.render_state.view_matrix,
+        &game_graphics_runtime.render_state.quadrant_matrices[orient], position};
+    render_precise_map = &precise;
     render_enqueue_map(object_index, &game_graphics_runtime.light_quadrant_matrices[orient], &cell_matrix, game_graphics_runtime.render_state.projection);
+    render_precise_map = nullptr;
 }
 
 // PC extension: a widescreen picture shows more to each side than the original
