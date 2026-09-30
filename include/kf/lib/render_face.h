@@ -14,6 +14,10 @@ using KfFaceShading = kf::FaceShading;
 // them at its near plane.
 inline bool render_face_needs_camera_test(const KfScreenVertex *a, const KfScreenVertex *b, const KfScreenVertex *c)
 {
+    // Orthographic vertices (HUD models such as the compass needle) have no
+    // camera-space position (w = 0): they keep the screen test.
+    if (a->w == 0.0f || b->w == 0.0f || c->w == 0.0f)
+        return false;
     for (const KfScreenVertex *v : {a, b, c}) {
         if (v->cz < kf::render_near_depth || v->fx <= -1024.0f || v->fx >= 1023.0f || v->fy <= -1024.0f || v->fy >= 1023.0f)
             return true;
@@ -71,9 +75,10 @@ inline void render_face_vertex(kf::DrawFace *face, unsigned index, const KfScree
         out.y = vertex->sxy.vector.vy;
     }
     out.w = kf::render_perspective ? vertex->w : 0.0f;
-    // cz = 0 marks camera-fixed vertices; world vertices may lie behind the
-    // camera (negative cz) and are clipped by the host.
-    const bool world = !kf::render_camera_fixed;
+    // cz = 0 marks camera-fixed and orthographic vertices (w = 0: HUD models such
+    // as the compass needle); world vertices may lie behind the camera (negative
+    // cz) and are clipped by the host.
+    const bool world = !kf::render_camera_fixed && vertex->w > 0.0f;
     out.cx = world ? vertex->cx : 0.0f;
     out.cy = world ? vertex->cy : 0.0f;
     out.cz = world ? (vertex->cz == 0.0f ? -0.001f : vertex->cz) : 0.0f;
