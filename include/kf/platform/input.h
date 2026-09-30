@@ -51,6 +51,8 @@ inline bool fix_spatial_panning = true;
 // Classic mode (F1 > Settings): as originally shipped, so also no automap,
 // equipment stats or quick save/load.
 inline bool classic_mode = false;
+// Interacting with a lock uses the matching key if the player carries it.
+inline bool auto_use_keys = true;
 }
 
 #endif // KF_PLATFORM_INPUT_H

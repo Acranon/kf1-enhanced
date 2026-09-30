@@ -395,9 +395,16 @@ void draw_settings_window() {
     } else if (std::strcmp(settings_page, "Language") == 0) {
         language_settings_page(changed);
     } else if (std::strcmp(settings_page, "Gameplay") == 0) {
+        ImGui::BeginDisabled(s.classic);
+        if (ImGui::Checkbox("Use carried keys on locked doors and chests", &s.auto_keys)) {
+            apply_control_settings();
+            changed = true;
+        }
+        ImGui::SetItemTooltip("Interacting with a lock unlocks it (with the unlock sound) when you carry\n"
+                              "its key, instead of having to choose the key from the item menu.");
+        ImGui::SeparatorText("Bug fixes");
         ImGui::TextWrapped("Fixes for bugs in the original game. Turn them off to play exactly as on the PlayStation.");
         ImGui::Spacing();
-        ImGui::BeginDisabled(s.classic);
         if (ImGui::Checkbox("Enemies fall after hitting a ceiling mid-jump", &s.fix_ceiling_fall)) {
             apply_control_settings();
             changed = true;

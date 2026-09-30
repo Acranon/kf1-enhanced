@@ -51,6 +51,7 @@ enum {
     MAP_WEAPON_TRANSFORM_HOLD_UPDATES = 40,
     MAP_WEAPON_TRANSFORM_SWAP_COUNTDOWN = 20,
     MAP_SHOP_SEQUENCE_INDEX = 2,
+    MAP_KEY_UNLOCK_VOLUME = 110,   // as when a key is used from the item menu
     MAP_FLOOR3_DIALOGUE_DOOR_LINK = 0x37
 };
 
@@ -497,6 +498,24 @@ static void map_finish_event_interaction(KfMapEvent *event)
     player_clear_motion();
 }
 
+// PC extension: interacting with a lock whose key the player carries uses it,
+// as choosing the key from the item menu would (keys are not used up).
+static bool map_unlock_with_carried_key(KfMapObject *object)
+{
+    if (kf::classic_mode || !kf::auto_use_keys)
+        return false;
+    const auto &stock = item_stock[kf_enum_encode<u8>(KF_ITEM_STOCK_PLAYER)];
+    for (const auto key : {KF_ITEM_KEY_OF_THE_DEAD, KF_ITEM_RAITO_FAMILY_KEY, KF_ITEM_DUNGEON_KEY, KF_ITEM_SORCERER_KEY}) {
+        const u8 id = kf_enum_encode<u8>(key);
+        if (object->link.fields.link_id != id || stock[id] == 0)
+            continue;
+        object->link.fields.link_id = KF_MAP_LINK_NONE;
+        sound_ref_play(audio_playback(), &gameplay_sound_refs[KF_GAMEPLAY_SOUND_KEY_UNLOCK], MAP_KEY_UNLOCK_VOLUME);
+        return true;
+    }
+    return false;
+}
+
 static void map_interact_hinged_container(KfMapObject *object,
     const VECTOR *position, SVECTOR *rotation)
 {
@@ -506,6 +525,8 @@ static void map_interact_hinged_container(KfMapObject *object,
     KfObjectId *item_id;
 
     if (object->link.fields.link_id != KF_MAP_LINK_NONE) {
+        if (map_unlock_with_carried_key(object))
+            return;
         notify_enqueue(object->link.fields.linked_notification);
         return;
     }
@@ -742,7 +763,8 @@ void map_interaction_dispatch(const VECTOR *position, SVECTOR *rotation)
                     break;
                 }
                 if (object->link.fields.link_id != KF_MAP_LINK_NONE) {
-                    notify_enqueue(object->link.fields.default_notification);
+                    if (!map_unlock_with_carried_key(object))
+                        notify_enqueue(object->link.fields.default_notification);
                     break;
                 }
                 map_object_start_action_if_idle(object, KF_MAP_OBJECT_OP_LIFT_DOOR);
@@ -756,7 +778,8 @@ void map_interaction_dispatch(const VECTOR *position, SVECTOR *rotation)
                     break;
                 }
                 if (object->link.fields.link_id != KF_MAP_LINK_NONE && definition->behavior_type == KF_MAP_OBJECT_OP_HINGED_DOOR) {
-                    notify_enqueue(object->link.fields.default_notification);
+                    if (!map_unlock_with_carried_key(object))
+                        notify_enqueue(object->link.fields.default_notification);
                     break;
                 }
 
