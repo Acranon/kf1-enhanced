@@ -39,6 +39,7 @@ inline constexpr u8 automap_unlocked = 0xff;
 struct AutomapMarker {
     AutomapMarkerKind kind;
     // Warp: destination (1..5 or the constants above). Fountain: 1 when full.
+    // Npc: the character id (their dialogue folder, TALK/Cxx).
     // LockedDoor and Chest: the lock's link id (automap_unlocked when open); a
     // link below 128 that names an item is the key that opens it.
     u8 label;

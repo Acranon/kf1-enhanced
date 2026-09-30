@@ -175,7 +175,7 @@ void automap_publish(void)
     for (const auto &event : map_runtime_state.events) {
         if (event.state == KF_MAP_EVENT_ACTIVE)
             add(kf::AutomapMarkerKind::Npc, static_cast<float>(event.position_x) / tile_size,
-                static_cast<float>(event.position_z) / tile_size);
+                static_cast<float>(event.position_z) / tile_size, kf_enum_encode<u8>(event.character_id));
     }
     for (const auto &actor : actor_state.actors) {
         if (actor.slot_state == KF_ACTOR_SLOT_FREE || actor.lifecycle != KF_ACTOR_LIFECYCLE_ACTIVE

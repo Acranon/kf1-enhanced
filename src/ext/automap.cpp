@@ -174,6 +174,25 @@ bool marker_shown(const AutomapSnapshot &map, const AutomapMarker &marker) {
     return marker.kind != AutomapMarkerKind::Door && marker_known(map, marker);
 }
 
+// People, by character id, as their own dialogue names them (TALK/Cxx images).
+// Those who never give a name stay "Person".
+const char *person_name(u8 character) {
+    switch (character) {
+    case 1: return "Light (shopkeeper)";
+    case 2: return "Gill (shopkeeper)";
+    case 3: return "Priest";
+    case 4: return "Basque Crize (guard)";
+    case 5: return "Dying soldier";
+    case 6: return "Erik (thief)";
+    case 7: return "Poet";
+    case 8: return "Rally Kelvim (sage)";
+    case 9: return "Oarman (gravedigger)";
+    case 12: return "King Randalf";
+    case 13: return "Groundskeeper";
+    default: return "Person";
+    }
+}
+
 std::string marker_description(const AutomapMarker &marker) {
     const bool hints = settings().map_key_hints;
     switch (marker.kind) {
@@ -192,7 +211,7 @@ std::string marker_description(const AutomapMarker &marker) {
     case AutomapMarkerKind::Fountain:
         return marker.label ? "Fountain" : "Fountain (dry)";
     case AutomapMarkerKind::Npc:
-        return "Person";
+        return person_name(marker.label);
     case AutomapMarkerKind::Item:
         return item_name(marker.items[0]);
     case AutomapMarkerKind::Chest: {
