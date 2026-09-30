@@ -17,6 +17,8 @@ struct Vertex {
     float cx = 0, cy = 0, cz = 0;
 };
 // PC extensions, set from the Display settings.
+// Camera-space depth where faces reaching behind the camera are clipped (PC extension).
+inline constexpr float render_near_depth = 32.0f;
 inline bool render_subpixel = true;     // keep projected positions' fractions
 inline bool render_perspective = true;  // perspective-correct textures and shading
 inline bool render_depth_buffer = false; // per-pixel occlusion for 3D faces (experimental)

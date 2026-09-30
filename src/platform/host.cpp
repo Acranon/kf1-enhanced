@@ -44,6 +44,8 @@ struct HostState {
     double look_remainder_x, look_remainder_y;
     bool focused, mouse_captured, resume_mouse_capture;
     bool paused, overlay_was_open, cursor_released, recapture_mouse;
+    Projection clip_projection;
+    std::vector<DrawFace> clipped_faces;
     u32 quick_pressed;
     bool opening_load_pressed;
     bool run_toggled;
@@ -773,6 +775,76 @@ static void apply_lights(const HostState::FrameLight *lights, int count, const f
     renderer_set_lights(&host.renderer, out, count);
 }
 
+// Faces that reach behind the camera's near plane are cut at it in camera space
+// and their new corners projected, instead of being dropped (as the PlayStation
+// did) or drawn from saturated coordinates.
+static bool face_crosses_near(const DrawFace &face) {
+    const unsigned count = static_cast<unsigned>(face.shape);
+    if (count != 3 && count != 4)
+        return false;
+    bool crossing = false;
+    for (unsigned v = 0; v < count; ++v) {
+        if (face.vertices[v].cz == 0)
+            return false;   // camera-fixed (menus, weapon): not clippable
+        const Vertex &vertex = face.vertices[v];
+        // Also corners projected past the saturated screen range: re-projecting
+        // them from camera space without the clamp keeps the face's shape.
+        crossing = crossing || vertex.cz < render_near_depth || vertex.x <= -1024.0f || vertex.x >= 1023.0f
+            || vertex.y <= -1024.0f || vertex.y >= 1023.0f;
+    }
+    return crossing;
+}
+
+static void clip_face_near(const DrawFace &face, std::vector<DrawFace> &out) {
+    const Projection &projection = host.clip_projection;
+    const float near_depth = render_near_depth;
+    // Outline order: quads are drawn as (0,1,2) and (1,3,2).
+    const unsigned outline_quad[] = {0, 1, 3, 2}, outline_triangle[] = {0, 1, 2};
+    const unsigned count = static_cast<unsigned>(face.shape);
+    const unsigned *outline = count == 4 ? outline_quad : outline_triangle;
+    Vertex polygon[8];
+    unsigned size = 0;
+    const auto lerp = [](const Vertex &a, const Vertex &b, float t) {
+        Vertex v = a;
+        const auto mix = [t](float x, float y) { return x + (y - x) * t; };
+        v.u = mix(a.u, b.u); v.v = mix(a.v, b.v);
+        v.r = mix(a.r, b.r); v.g = mix(a.g, b.g); v.b = mix(a.b, b.b); v.a = mix(a.a, b.a);
+        v.cx = mix(a.cx, b.cx); v.cy = mix(a.cy, b.cy); v.cz = mix(a.cz, b.cz);
+        return v;
+    };
+    for (unsigned i = 0; i < count; ++i) {
+        const Vertex &a = face.vertices[outline[i]], &b = face.vertices[outline[(i + 1) % count]];
+        const bool a_in = a.cz >= near_depth, b_in = b.cz >= near_depth;
+        if (a_in)
+            polygon[size++] = a;
+        if (a_in != b_in)
+            polygon[size++] = lerp(a, b, (near_depth - a.cz) / (b.cz - a.cz));
+    }
+    if (size < 3)
+        return;
+    const bool perspective = face.vertices[0].w > 0;
+    for (unsigned i = 0; i < size; ++i) {
+        Vertex &v = polygon[i];
+        const float scale = projection.distance / v.cz;
+        v.x = v.cx * scale + static_cast<float>(projection.center_x);
+        v.y = v.cy * scale + static_cast<float>(projection.center_y);
+        if (!render_subpixel) {
+            v.x = std::floor(v.x);
+            v.y = std::floor(v.y);
+        }
+        v.w = perspective ? v.cz : 0.0f;
+    }
+    // Fan into triangles; the pieces stay adjacent and share the face's depth.
+    for (unsigned i = 1; i + 1 < size; ++i) {
+        DrawFace piece = face;
+        piece.shape = FaceShape::Triangle;
+        piece.vertices[0] = polygon[0];
+        piece.vertices[1] = polygon[i];
+        piece.vertices[2] = polygon[i + 1];
+        out.push_back(piece);
+    }
+}
+
 static void draw_and_swap(const FaceList *faces) {
     int width = 0, height = 0;
     SDL_GetWindowSizeInPixels(host.window, &width, &height);
@@ -785,7 +857,22 @@ static void draw_and_swap(const FaceList *faces) {
     static unsigned perf_frames;
     const Uint64 draw_start = perf ? SDL_GetTicksNS() : 0;
 #endif
-    if (!renderer_draw_faces(&host.renderer, faces, width, height))
+    FaceList clipped = *faces;
+    bool any_crossing = false;
+    for (std::size_t i = 0; i < faces->count && !any_crossing; ++i)
+        any_crossing = face_crosses_near(faces->faces[i]);
+    if (any_crossing) {
+        host.clipped_faces.clear();
+        for (std::size_t i = 0; i < faces->count; ++i) {
+            if (face_crosses_near(faces->faces[i]))
+                clip_face_near(faces->faces[i], host.clipped_faces);
+            else
+                host.clipped_faces.push_back(faces->faces[i]);
+        }
+        clipped.faces = host.clipped_faces.data();
+        clipped.count = host.clipped_faces.size();
+    }
+    if (!renderer_draw_faces(&host.renderer, &clipped, width, height))
         host_fail("Cannot submit game render commands.");
 #if KF_EXT
     if (perf) {
@@ -923,7 +1010,7 @@ void smooth_present(Uint64 now) {
         bool visible = true;
         for (unsigned v = 0; v < static_cast<unsigned>(face.shape) && visible; ++v) {
             Vertex &vertex = face.vertices[v];
-            if (vertex.cz <= 0)
+            if (vertex.cz == 0)
                 continue;
             // camera' = V_shown * (V_now^T * camera + P_now - P_shown)
             float world[3];
@@ -932,11 +1019,9 @@ void smooth_present(Uint64 now) {
             float camera[3];
             for (int r = 0; r < 3; ++r)
                 camera[r] = view_shown[r][0] * world[0] + view_shown[r][1] * world[1] + view_shown[r][2] * world[2];
-            if (camera[2] < smooth_near_depth) {
-                visible = false;
-                break;
-            }
-            const float scale = distance / camera[2];
+            // Corners in front of the near plane are projected here; faces that
+            // cross it are clipped (and re-projected) before drawing.
+            const float scale = distance / std::max(camera[2], smooth_near_depth);
             float x = std::clamp(camera[0] * scale + b.projection.center_x, -1024.0f, 1023.0f);
             float y = std::clamp(camera[1] * scale + b.projection.center_y, -1024.0f, 1023.0f);
             if (!render_subpixel) {
@@ -1032,6 +1117,7 @@ static Uint64 smooth_next_present_ns() { return smooth.next_present_ns; }
 static void smooth_present_now(Uint64 now) { smooth_present(now); }
 
 void host_frame_camera(const VECTOR &position, const SVECTOR &rotation, const Projection &projection) {
+    host.clip_projection = projection;
     smooth.frame = {position, rotation, projection};
     smooth.frame_has_camera = true;
     // Unsmoothed frames are drawn from this camera; smoothed ones set their own.

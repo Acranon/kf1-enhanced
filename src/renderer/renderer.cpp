@@ -1191,9 +1191,12 @@ static unsigned append_face_triangle(DrawTriangle *triangles, const DrawFace &fa
     // Preserve the original rasterizer's per-triangle size rejection before
     // viewport clipping. Saturated behind-camera faces can otherwise fill the
     // view. Check each quad half independently without changing face order.
+    // World faces are exempt: the host clips them at the near plane and
+    // re-projects them, so a large one is a near floor or wall, not garbage.
     constexpr float maximum_triangle_width = 1023;
     constexpr float maximum_triangle_height = 511;
-    if (width > maximum_triangle_width || height > maximum_triangle_height)
+    const bool clipped_world = va.cz >= render_near_depth && vb.cz >= render_near_depth && vc.cz >= render_near_depth;
+    if (!clipped_world && (width > maximum_triangle_width || height > maximum_triangle_height))
         return 0;
     const bool dither = face.material.kind == SurfaceKind::Texture
         ? face.material.color_mode == TextureColorMode::Modulated : face.shading == FaceShading::Gouraud;

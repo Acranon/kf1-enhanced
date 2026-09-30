@@ -97,7 +97,9 @@ void render_map_cell(s32 col, s32 row, KfCellVisibility visibility)
 // PC extension: a widescreen picture shows more to each side than the original
 // 4:3 cone, and every map cell, object, actor and effect is culled through the
 // active cell window. Each of the 16 yaw windows covers 1/16 turn, so merging a
-// window with both neighbours covers any aspect the renderer allows.
+// window with both neighbours covers any aspect the renderer allows. The cells
+// right around the camera are always included too: looking down past the
+// original limit shows the floor beside and behind the player.
 static const KfCellWindow *render_widen_cell_window(int yaw_index)
 {
     constexpr int overflow_capacity = 1024;
@@ -111,7 +113,8 @@ static const KfCellWindow *render_widen_cell_window(int yaw_index)
         &render_cell_windows[(yaw_index + KF_CELL_WINDOW_YAW_COUNT - 1) % KF_CELL_WINDOW_YAW_COUNT],
         &render_cell_windows[yaw_index],
         &render_cell_windows[(yaw_index + 1) % KF_CELL_WINDOW_YAW_COUNT]};
-    int min_dx = 0, max_dx = 0, min_dz = 0, max_dz = 0;
+    constexpr int around_camera = 2;
+    int min_dx = -around_camera, max_dx = around_camera, min_dz = -around_camera, max_dz = around_camera;
     for (const auto *part : parts) {
         min_dx = std::min(min_dx, -int(part->origin_x));
         max_dx = std::max(max_dx, int(part->width) - 1 - int(part->origin_x));
@@ -134,6 +137,9 @@ static const KfCellWindow *render_widen_cell_window(int yaw_index)
             }
         }
     }
+    for (int dz = -around_camera; dz <= around_camera; ++dz)
+        for (int dx = -around_camera; dx <= around_camera; ++dx)
+            cells[(dz - min_dz) * width + (dx - min_dx)] = KF_CELL_WINDOW_NEAR;
     wide.window.width = static_cast<u16>(width);
     wide.window.height = static_cast<u16>(height);
     wide.window.origin_x = static_cast<u16>(-min_dx);
@@ -181,7 +187,8 @@ void render_map_cells(void)
         const int yaw_index = KF_CELL_WINDOW_YAW_COUNT - 1
             - (game_graphics_runtime.render_state.view_rotation.vy >> KF_CELL_WINDOW_YAW_SHIFT);
         game_graphics_runtime.active_cell_window = &render_cell_windows[yaw_index];
-        if (kf::host_renderer()->logical_width > kf::render_width || kf::render_smoothing)
+        if (kf::host_renderer()->logical_width > kf::render_width || kf::render_smoothing
+                || kf::player_pitch_limit > KF_PLAYER_CAMERA_PITCH_LIMIT)
             game_graphics_runtime.active_cell_window = render_widen_cell_window(yaw_index);
     }
 
