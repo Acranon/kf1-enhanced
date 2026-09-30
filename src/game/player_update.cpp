@@ -669,7 +669,9 @@ void player_update(void)
 
     input = kf::host_read_buttons();
     const auto look = kf::host_take_look();
-    switch (kf::host_take_quick_request()) {
+    // Classic mode has no quick save or load (the request is still taken).
+    const auto quick = kf::host_take_quick_request();
+    switch (kf::classic_mode ? kf::QuickRequest::None : quick) {
     case kf::QuickRequest::Save:
         player_quick_save();
         break;

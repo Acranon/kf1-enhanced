@@ -48,6 +48,9 @@ inline s32 player_pitch_limit = 191;
 inline bool fix_actor_ceiling_fall = true;
 // Sounds flagged for narrower stereo panning get their volume adjustment.
 inline bool fix_spatial_panning = true;
+// Classic mode (F1 > Settings): as originally shipped, so also no automap,
+// equipment stats or quick save/load.
+inline bool classic_mode = false;
 }
 
 #endif // KF_PLATFORM_INPUT_H

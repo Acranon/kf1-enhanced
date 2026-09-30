@@ -23,6 +23,9 @@ void console_pump();   // drains captured output on the main thread
 
 // ---- settings (settings.json in user_dir) ----
 struct Settings {
+    // Classic mode: play as originally shipped. Every enhancement below is
+    // overridden (see effective_settings) while the player's values are kept.
+    bool classic = false;
     bool fullscreen = false;
     bool vsync = false;
     bool pause_when_open = false;
@@ -67,6 +70,9 @@ struct Settings {
     std::string ui_font;        // empty: first available system font
 };
 Settings &settings();
+// The settings in effect: the player's, or with Classic mode on, the player's
+// with every enhancement set to the original behaviour.
+const Settings &effective_settings();
 void settings_load();
 void settings_mark_dirty();
 void settings_save_if_dirty();

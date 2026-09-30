@@ -217,6 +217,24 @@ void draw_settings_window() {
         return;
     }
     Settings &s = settings();
+    bool classic_changed = false;
+    if (ImGui::Checkbox("Classic mode", &s.classic)) {
+        apply_render_settings();
+        apply_control_settings();
+        classic_changed = true;
+    }
+    ImGui::SetItemTooltip("Play King's Field as it originally shipped: 4:3 at 320x240, 20 fps,\n"
+                          "polygon wiggle, texture warping, 15-bit colour with dithering, no added\n"
+                          "lighting or anti-aliasing, the original look range, no run key, no\n"
+                          "automap, equipment stats, quick save or bug fixes.\n\n"
+                          "Your own settings are kept and come back when Classic mode is off.\n"
+                          "Fullscreen, volume, controls, language and mods are unaffected.");
+    ImGui::SameLine();
+    if (s.classic)
+        ImGui::TextColored(ImVec4(0.95f, 0.8f, 0.45f, 1.0f), "On: as originally shipped. Your settings below are kept for later.");
+    else
+        ImGui::TextDisabled("(as originally shipped)");
+    ImGui::Separator();
     const char *pages[] = {"Display", "Audio", "Controls", "Gameplay", "Language", "Map", "Interface"};
     ImGui::BeginChild("pages", ImVec2(130 * applied_scale, 0), ImGuiChildFlags_Borders);
     for (const char *page : pages)
@@ -225,7 +243,7 @@ void draw_settings_window() {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("page");
-    bool changed = false;
+    bool changed = classic_changed;
     if (std::strcmp(settings_page, "Display") == 0) {
         if (ImGui::Checkbox("Fullscreen", &s.fullscreen)) {
             apply_display_settings();
@@ -237,6 +255,7 @@ void draw_settings_window() {
             changed = true;
         }
         changed |= ImGui::Checkbox("Show FPS", &s.show_fps);
+        ImGui::BeginDisabled(s.classic);   // Classic mode overrides the rest
         const int rates[] = {20, 0, 60, 120, 144, 165, 240, -1};
         const char *rate_labels[] = {"20 fps (original)", "Match display refresh", "60 fps", "120 fps", "144 fps",
                                      "165 fps", "240 fps", "Unlimited"};
@@ -363,18 +382,22 @@ void draw_settings_window() {
             changed = true;
         }
         ImGui::SetItemTooltip("Stops parts of objects showing through walls at some angles.\nThe PlayStation sorted whole polygons instead; some effects may\nlook different with this on.");
+        ImGui::EndDisabled();
     } else if (std::strcmp(settings_page, "Audio") == 0) {
         if (slider_input("Volume", &s.volume, 0, 100, "%d%%")) {
             apply_audio_settings();
             changed = true;
         }
     } else if (std::strcmp(settings_page, "Map") == 0) {
+        ImGui::BeginDisabled(s.classic);
         automap_settings_page(changed);
+        ImGui::EndDisabled();
     } else if (std::strcmp(settings_page, "Language") == 0) {
         language_settings_page(changed);
     } else if (std::strcmp(settings_page, "Gameplay") == 0) {
         ImGui::TextWrapped("Fixes for bugs in the original game. Turn them off to play exactly as on the PlayStation.");
         ImGui::Spacing();
+        ImGui::BeginDisabled(s.classic);
         if (ImGui::Checkbox("Enemies fall after hitting a ceiling mid-jump", &s.fix_ceiling_fall)) {
             apply_control_settings();
             changed = true;
@@ -385,7 +408,9 @@ void draw_settings_window() {
             changed = true;
         }
         ImGui::SetItemTooltip("Some floor 5 enemy sounds are marked for a panning volume adjustment\nthat the original never applied.");
+        ImGui::EndDisabled();
     } else if (std::strcmp(settings_page, "Controls") == 0) {
+        ImGui::BeginDisabled(s.classic);
         const char *run_modes[] = {"Hold to run", "Toggle run"};
         int run_mode = s.run_toggle ? 1 : 0;
         if (ImGui::Combo("Run key (Shift)", &run_mode, run_modes, 2)) {
@@ -404,6 +429,7 @@ void draw_settings_window() {
             changed = true;
         }
         ImGui::SetItemTooltip("How far the camera can tilt up or down. The original game allows about 17 degrees.");
+        ImGui::EndDisabled();
         ImGui::Spacing();
         ImGui::TextWrapped("Current bindings (rebinding is planned):");
         const char *rows[][2] = {

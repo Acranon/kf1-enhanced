@@ -496,6 +496,8 @@ void draw_full_map(const AutomapSnapshot &map) {
 }
 
 void automap_toggle_full() {
+    if (settings().classic)
+        return;   // no automap in Classic mode
     full_map_open = !full_map_open;
     if (full_map_open) {
         map_zoom = 1.0f;
@@ -508,10 +510,10 @@ bool automap_full_open() {
 }
 
 void automap_draw(int input_context) {
-    const Settings &s = settings();
+    const Settings &s = effective_settings();
     const auto &map = automap_snapshot();
     const bool in_game = input_context == gameplay_context || input_context == scripted_context;
-    if (!in_game || map.floor == 0) {
+    if (!in_game || map.floor == 0 || s.classic) {
         full_map_open = false;
         return;
     }

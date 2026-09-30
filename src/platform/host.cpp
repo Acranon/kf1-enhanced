@@ -664,6 +664,8 @@ bool host_opening_quick_load() {
     // KF_TEST_TITLE_LOAD: press quick load on the first opening poll.
     static bool test_load = std::getenv("KF_TEST_TITLE_LOAD") != nullptr;
     host.opening_load_pressed |= test_load;
+    if (classic_mode)
+        host.opening_load_pressed = false;
     test_load = false;
     if (!host.opening_load_pressed)
         return false;

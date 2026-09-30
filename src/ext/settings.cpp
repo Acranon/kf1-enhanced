@@ -106,6 +106,7 @@ void settings_load() {
     current.look_limit = static_cast<int>(read_number(controls, "look_limit", current.look_limit));
     const cJSON *gameplay = cJSON_GetObjectItemCaseSensitive(document, "gameplay");
     current.language = read_string(gameplay, "language", current.language);
+    current.classic = read_bool(gameplay, "classic_mode", current.classic);
     current.fix_ceiling_fall = read_bool(gameplay, "fix_ceiling_fall", current.fix_ceiling_fall);
     current.fix_spatial_panning = read_bool(gameplay, "fix_spatial_panning", current.fix_spatial_panning);
     const cJSON *map = cJSON_GetObjectItemCaseSensitive(document, "map");
@@ -167,6 +168,7 @@ void settings_save_if_dirty() {
     write_value(controls, "look_limit", cJSON_CreateNumber(current.look_limit));
     cJSON *gameplay = object_entry(document, "gameplay");
     write_value(gameplay, "language", cJSON_CreateString(current.language.c_str()));
+    write_value(gameplay, "classic_mode", cJSON_CreateBool(current.classic));
     write_value(gameplay, "fix_ceiling_fall", cJSON_CreateBool(current.fix_ceiling_fall));
     write_value(gameplay, "fix_spatial_panning", cJSON_CreateBool(current.fix_spatial_panning));
     cJSON *map = object_entry(document, "map");
@@ -206,6 +208,32 @@ cJSON *settings_mod_entry(const std::string &id) {
     return object_entry(object_entry(document, "mods"), id.c_str());
 }
 
+const Settings &effective_settings() {
+    if (!current.classic)
+        return current;
+    static Settings classic;
+    classic = current;
+    classic.aspect = "4:3";
+    classic.resolution = 1;           // 320x240, scaled up to the window
+    classic.subpixel = false;         // polygon wiggle
+    classic.perspective = false;      // affine texture warping
+    classic.depth_buffer = false;
+    classic.true_color = false;       // 15-bit colour with dithering
+    classic.dynamic_lights = false;
+    classic.ambient_occlusion = false;
+    classic.texture_filter = 0;
+    classic.antialiasing = 0;
+    classic.flame_glow = false;
+    classic.shadows = false;
+    classic.frame_rate = 20;
+    classic.run_speed = 100;          // no run key
+    classic.look_limit = 17;
+    classic.fix_ceiling_fall = false;
+    classic.fix_spatial_panning = false;
+    classic.minimap = false;
+    return classic;
+}
+
 void apply_display_settings() {
     if (SDL_Window *handle = window())
         SDL_SetWindowFullscreen(handle, current.fullscreen);
@@ -213,22 +241,23 @@ void apply_display_settings() {
 }
 
 void apply_render_settings() {
-    render_subpixel = current.subpixel;
-    render_perspective = current.perspective;
-    render_depth_buffer = current.depth_buffer;
-    render_true_color = current.true_color;
-    render_dynamic_lights = current.dynamic_lights;
-    render_light_strength = static_cast<float>(current.light_strength) / 100.0f;
-    render_light_occlusion = current.light_occlusion;
-    render_ambient_occlusion = current.ambient_occlusion;
-    render_ao_strength = static_cast<float>(current.ao_strength) / 100.0f;
-    render_texture_filter = current.texture_filter;
-    render_fxaa = current.antialiasing == 1;
-    render_glow = current.flame_glow ? static_cast<float>(current.glow_strength) / 100.0f : 0.0f;
-    render_shadows = current.shadows ? static_cast<float>(current.shadow_strength) / 100.0f : 0.0f;
-    render_supersample = current.antialiasing == 2 ? 2 : current.antialiasing == 3 ? 3 : 1;
-    render_smoothing = current.frame_rate != 20;
-    render_frame_limit = current.frame_rate == 20 ? 0 : current.frame_rate;
+    const Settings &e = effective_settings();
+    render_subpixel = e.subpixel;
+    render_perspective = e.perspective;
+    render_depth_buffer = e.depth_buffer;
+    render_true_color = e.true_color;
+    render_dynamic_lights = e.dynamic_lights;
+    render_light_strength = static_cast<float>(e.light_strength) / 100.0f;
+    render_light_occlusion = e.light_occlusion;
+    render_ambient_occlusion = e.ambient_occlusion;
+    render_ao_strength = static_cast<float>(e.ao_strength) / 100.0f;
+    render_texture_filter = e.texture_filter;
+    render_fxaa = e.antialiasing == 1;
+    render_glow = e.flame_glow ? static_cast<float>(e.glow_strength) / 100.0f : 0.0f;
+    render_shadows = e.shadows ? static_cast<float>(e.shadow_strength) / 100.0f : 0.0f;
+    render_supersample = e.antialiasing == 2 ? 2 : e.antialiasing == 3 ? 3 : 1;
+    render_smoothing = e.frame_rate != 20;
+    render_frame_limit = e.frame_rate == 20 ? 0 : e.frame_rate;
     SDL_Window *handle = window();
     if (!handle)
         return;
@@ -238,14 +267,14 @@ void apply_render_settings() {
         return;
     // Logical columns for 240 rows: 4:3 is the original 320.
     double aspect = 4.0 / 3.0;
-    if (current.aspect == "16:9") aspect = 16.0 / 9.0;
-    else if (current.aspect == "16:10") aspect = 16.0 / 10.0;
-    else if (current.aspect == "21:9") aspect = 64.0 / 27.0;
-    else if (current.aspect == "window") aspect = static_cast<double>(width) / height;
+    if (e.aspect == "16:9") aspect = 16.0 / 9.0;
+    else if (e.aspect == "16:10") aspect = 16.0 / 10.0;
+    else if (e.aspect == "21:9") aspect = 64.0 / 27.0;
+    else if (e.aspect == "window") aspect = static_cast<double>(width) / height;
     int columns = static_cast<int>(std::lround(render_height * aspect));
     columns = std::clamp(columns + (columns & 1), render_width, 640);
     Renderer *renderer = host_renderer();
-    int scale = current.resolution;
+    int scale = e.resolution;
     if (scale <= 0) {
         // Native: enough pixels to cover the picture's height in the window.
         const double shown = std::min(static_cast<double>(height), width * render_height / static_cast<double>(columns));
@@ -264,16 +293,18 @@ void apply_render_settings() {
 }
 
 void apply_control_settings() {
-    player_run_speed = std::clamp(current.run_speed, 100, 250);
-    player_run_toggle = current.run_toggle;
+    const Settings &e = effective_settings();
+    classic_mode = current.classic;
+    player_run_speed = std::clamp(e.run_speed, 100, 250);
+    player_run_toggle = e.run_toggle;
     // Degrees to 1/4096 turns; never tighter than the original limit, and short of straight up/down.
-    const int degrees = std::clamp(current.look_limit, 17, 85);
+    const int degrees = std::clamp(e.look_limit, 17, 85);
     player_pitch_limit = std::max(191, degrees * 4096 / 360);
-    fix_actor_ceiling_fall = current.fix_ceiling_fall;
+    fix_actor_ceiling_fall = e.fix_ceiling_fall;
     Language language;
-    if (language_parse(current.language.c_str(), &language))
+    if (language_parse(e.language.c_str(), &language))
         language_preference = language;
-    fix_spatial_panning = current.fix_spatial_panning;
+    fix_spatial_panning = e.fix_spatial_panning;
 }
 
 void apply_audio_settings() {

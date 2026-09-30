@@ -1285,12 +1285,16 @@ void menu_stats_number(MenuGlyphString &gs, s32 x, s32 value, s32 compare_to, bo
 
 bool menu_stats_available(KfObjectId item_id)
 {
+    if (kf::classic_mode)
+        return false;
     return menu_category_slot(menu_stats_compare) != MenuItemSlot::None || menu_item_slot(item_id) != MenuItemSlot::None;
 }
 
 // Draws the rows from y down; returns false when the item has nothing to show.
 bool menu_draw_item_stats(KfObjectId item_id, s32 y)
 {
+    if (kf::classic_mode)
+        return false;
     const MenuItemSlot compare_slot = menu_category_slot(menu_stats_compare);
     const bool compare = compare_slot != MenuItemSlot::None;
     const MenuItemSlot slot = compare ? compare_slot : menu_item_slot(item_id);
