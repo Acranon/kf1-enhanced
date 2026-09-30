@@ -176,19 +176,27 @@ bool marker_shown(const AutomapSnapshot &map, const AutomapMarker &marker) {
 
 // People, by character id, as their own dialogue names them (TALK/Cxx images).
 // Those who never give a name stay "Person".
+// Names and roles from the Mirror of Truth profiles (KF/PRSN/PERnn.TIM, nn =
+// character id), in the English translation's spelling.
 const char *person_name(u8 character) {
     switch (character) {
-    case 1: return "Light (shopkeeper)";
-    case 2: return "Gill (shopkeeper)";
-    case 3: return "Priest";
-    case 4: return "Basque Crize (guard)";
-    case 5: return "Dying soldier";
-    case 6: return "Erik (thief)";
-    case 7: return "Poet";
+    case 1: return "Wilfred Light (merchant)";
+    case 2: return "Gill Baccas (merchant)";
+    case 3: return "Juedds Kross (priest)";
+    case 4: return "Basque Crize (soldier)";
+    case 5: return "Watts Virgil (soldier)";
+    case 6: return "Erik Blair (soldier)";
+    case 7: return "Heinz Ruhart (minstrel)";
     case 8: return "Rally Kelvim (sage)";
-    case 9: return "Oarman (gravedigger)";
-    case 12: return "King Randalf";
-    case 13: return "Groundskeeper";
+    case 9: return "Nicholas Oarman (grave digger)";
+    case 10: return "Forest Dragon";
+    case 11: return "Miria (the dragon's fairy)";
+    case 12: return "Randalf VIII (former king)";
+    case 13: return "Ozzy Ranvalgve (graveyard caretaker)";
+    case 14:
+    case 15:
+    case 16: return "Evil Dark Magician";
+    case 17: return "Reinhardt III (former king)";
     default: return "Person";
     }
 }
