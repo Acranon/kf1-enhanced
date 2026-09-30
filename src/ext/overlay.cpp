@@ -580,6 +580,9 @@ bool overlay_captures_input() { return open; }
 bool pause_requested() {
     return (open && settings().pause_when_open) || (automap_full_open() && settings().map_pause);
 }
+bool pause_keeps_music() {
+    return !(open && settings().pause_when_open) && automap_full_open() && settings().map_keep_music;
+}
 bool redraw_while_paused() { return open || automap_full_open(); }
 bool wants_cursor() { return open || automap_full_open(); }
 

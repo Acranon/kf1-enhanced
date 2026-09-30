@@ -379,20 +379,27 @@ static bool smooth_redraw_paused();
 static void update_pause() {
     // KF_TEST_NO_PAUSE: keep running unfocused (automated testing).
     static const bool focus_pauses = !std::getenv("KF_TEST_NO_PAUSE");
-    bool wanted = focus_pauses && !host.focused;
+    const bool unfocused = focus_pauses && !host.focused;
+    bool wanted = unfocused;
+    SoundPause audio = unfocused ? SoundPause::All : SoundPause::None;
 #if KF_EXT
-    wanted = wanted || ext::pause_requested();
-#endif
-    if (wanted == host.paused)
-        return;
-    if (wanted) {
-        host.pause_start = SDL_GetTicksNS();
-        sound_set_paused(true);
-    } else {
-        host.paused_ns += SDL_GetTicksNS() - host.pause_start;
-        sound_set_paused(false);
+    if (!unfocused && ext::pause_requested()) {
+        wanted = true;
+        audio = ext::pause_keeps_music() ? SoundPause::KeepMusic : SoundPause::All;
     }
-    host.paused = wanted;
+#endif
+    static SoundPause applied = SoundPause::None;
+    if (wanted != host.paused) {
+        if (wanted)
+            host.pause_start = SDL_GetTicksNS();
+        else
+            host.paused_ns += SDL_GetTicksNS() - host.pause_start;
+        host.paused = wanted;
+    }
+    if (audio != applied) {
+        sound_set_pause(audio);
+        applied = audio;
+    }
 }
 
 #if KF_EXT

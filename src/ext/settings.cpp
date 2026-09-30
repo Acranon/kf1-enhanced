@@ -117,6 +117,7 @@ void settings_load() {
     current.minimap_opacity = std::clamp(static_cast<int>(read_number(map, "minimap_opacity", current.minimap_opacity)), 20, 100);
     current.map_fog = read_bool(map, "fog_of_war", current.map_fog);
     current.map_pause = read_bool(map, "pause_game", current.map_pause);
+    current.map_keep_music = read_bool(map, "keep_music", current.map_keep_music);
     current.map_items = read_bool(map, "show_items", current.map_items);
     current.map_chests = read_bool(map, "show_chests", current.map_chests);
     current.map_enemies = read_bool(map, "show_enemies", current.map_enemies);
@@ -179,6 +180,7 @@ void settings_save_if_dirty() {
     write_value(map, "minimap_opacity", cJSON_CreateNumber(current.minimap_opacity));
     write_value(map, "fog_of_war", cJSON_CreateBool(current.map_fog));
     write_value(map, "pause_game", cJSON_CreateBool(current.map_pause));
+    write_value(map, "keep_music", cJSON_CreateBool(current.map_keep_music));
     write_value(map, "show_items", cJSON_CreateBool(current.map_items));
     write_value(map, "show_chests", cJSON_CreateBool(current.map_chests));
     write_value(map, "show_enemies", cJSON_CreateBool(current.map_enemies));

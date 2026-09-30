@@ -545,6 +545,12 @@ void automap_settings_page(bool &changed) {
     ImGui::TextDisabled("Press M in game for the full floor map.");
     changed |= ImGui::Checkbox("Pause the game while the full map is open", &s.map_pause);
     ImGui::SetItemTooltip("Off: the game keeps running, so you can walk around with the map open.");
+    ImGui::BeginDisabled(!s.map_pause);
+    ImGui::Indent();
+    changed |= ImGui::Checkbox("Keep the music playing", &s.map_keep_music);
+    ImGui::SetItemTooltip("While the map pauses the game, the music carries on; sound effects\nwait and continue when you close the map.");
+    ImGui::Unindent();
+    ImGui::EndDisabled();
     ImGui::SeparatorText("Exploration");
     changed |= ImGui::Checkbox("Fog of war", &s.map_fog);
     ImGui::SetItemTooltip("On: only places you have seen are drawn (the Keeper's or Magician's Map\nreveals the whole floor). Off: the whole floor is always shown.");

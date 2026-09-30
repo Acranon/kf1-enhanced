@@ -20,6 +20,8 @@ bool process_event(const SDL_Event &event);
 bool overlay_open();
 // The game clock and audio stop while this is true.
 bool pause_requested();
+// While pause_requested: whether the music keeps playing (the full map).
+bool pause_keeps_music();
 // The overlay or full map is showing while the game is held.
 bool redraw_while_paused();
 // The overlay or full map wants a free mouse cursor.

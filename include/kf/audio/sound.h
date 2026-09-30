@@ -16,6 +16,10 @@ bool sound_start();
 void sound_shutdown();
 void sound_poll();
 void sound_set_paused(bool paused);
+// PC extension: while the game is paused, keep the music playing (on real time)
+// and freeze only sound effects, which resume where they left off.
+enum class SoundPause : u8 { None, KeepMusic, All };
+void sound_set_pause(SoundPause pause);
 void sound_set_output_gain(float gain);
 void sound_reset(ReverbPreset preset, s16 depth_left, s16 depth_right);
 void sound_master_volume(s16 left, s16 right);

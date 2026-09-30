@@ -62,6 +62,7 @@ struct Settings {
     int minimap_opacity = 85;   // percent
     bool map_fog = true;        // only draw what has been seen
     bool map_pause = true;      // the full map pauses the game
+    bool map_keep_music = true; // ...but the music keeps playing
     bool map_items = false;     // cheat markers
     bool map_chests = false;
     bool map_enemies = false;
