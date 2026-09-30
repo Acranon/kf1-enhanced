@@ -178,11 +178,25 @@ void automap_publish(void)
                 static_cast<float>(event.home_z) / tile_size, kf_enum_encode<u8>(event.character_id));
     }
     for (const auto &actor : actor_state.actors) {
-        if (actor.slot_state == KF_ACTOR_SLOT_FREE || actor.lifecycle != KF_ACTOR_LIFECYCLE_ACTIVE
-                || actor.action == KF_ACTOR_ACTION_DYING || actor.action == KF_ACTOR_ACTION_POST_DEATH)
+        if (actor.slot_state == KF_ACTOR_SLOT_FREE)
             continue;
-        add(kf::AutomapMarkerKind::Enemy, static_cast<float>(actor.position.vx) / tile_size,
-            static_cast<float>(actor.position.vz) / tile_size);
+        // Placed enemies may carry a set item, dropped when they die (respawning
+        // ones only roll their kind's random drop, which is not shown).
+        const bool placed = actor.slot_state != KF_ACTOR_SLOT_DYNAMIC && actor.slot_state != KF_ACTOR_SLOT_RESPAWNING;
+        const KfObjectId drop = actor.death_drop_object_id;
+        const bool carries = placed && drop != KF_MAP_OBJECT_DROP_DISABLED && drop != KF_OBJECT_NONE
+            && kf_enum_encode<u8>(drop) < KF_ITEM_COUNT;
+        const bool awake = actor.lifecycle == KF_ACTOR_LIFECYCLE_ACTIVE
+            && actor.action != KF_ACTOR_ACTION_DYING && actor.action != KF_ACTOR_ACTION_POST_DEATH;
+        if (awake) {
+            add(kf::AutomapMarkerKind::Enemy, static_cast<float>(actor.position.vx) / tile_size,
+                static_cast<float>(actor.position.vz) / tile_size, 0, carries ? &drop : nullptr, carries ? 1 : 0);
+        } else if (carries && (actor.lifecycle == KF_ACTOR_LIFECYCLE_DORMANT
+                               || actor.lifecycle == KF_ACTOR_LIFECYCLE_WAIT_FOR_RANGE_EXIT)) {
+            // Not woken yet (they appear as the player comes near): marked at
+            // their spawn cell so the drop can be found in advance.
+            add(kf::AutomapMarkerKind::Enemy, actor.tile_x + 0.5f, actor.tile_z + 0.5f, 0, &drop, 1);
+        }
     }
     kf::automap_published();
 }

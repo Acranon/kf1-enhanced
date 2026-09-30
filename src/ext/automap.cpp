@@ -224,7 +224,7 @@ std::string marker_description(const AutomapMarker &marker) {
         return text;
     }
     case AutomapMarkerKind::Enemy:
-        return "Enemy";
+        return marker.items[0] != automap_no_item ? "Enemy\nDrops: " + item_name(marker.items[0]) : "Enemy";
     }
     return {};
 }
@@ -323,7 +323,13 @@ void draw_markers(const MapView &view, const AutomapSnapshot &map, bool labels) 
             break;
         case AutomapMarkerKind::Enemy:
             view.draw->AddCircleFilled(p, r * 0.7f, view.colour(235, 50, 50));
-            view.draw->AddCircle(p, r * 0.7f, outline, 12, 1.0f);
+            if (marker.items[0] != automap_no_item) {
+                // A gold ring: this enemy drops an item when it dies.
+                const float ring = std::max(1.5f, r * 0.3f);
+                view.draw->AddCircle(p, r * 0.7f + ring * 0.5f, view.colour(255, 205, 60), 16, ring);
+            } else {
+                view.draw->AddCircle(p, r * 0.7f, outline, 12, 1.0f);
+            }
             break;
         case AutomapMarkerKind::Door:
             break;
@@ -427,11 +433,14 @@ void draw_full_map(const AutomapSnapshot &map) {
         view.centre_z = map_centre_z;
     }
     if (test_hover) {
+        // Prefers a marker with items (a chest's contents, an enemy's drop).
+        const AutomapMarker *chosen = nullptr;
         for (int i = 0; i < map.marker_count; ++i)
-            if (static_cast<int>(map.markers[i].kind) == std::atoi(test_hover) && marker_known(map, map.markers[i])) {
-                mouse = view.at(map.markers[i].x, map.markers[i].z);
-                break;
-            }
+            if (static_cast<int>(map.markers[i].kind) == std::atoi(test_hover) && marker_known(map, map.markers[i])
+                    && (!chosen || (chosen->items[0] == automap_no_item && map.markers[i].items[0] != automap_no_item)))
+                chosen = &map.markers[i];
+        if (chosen)
+            mouse = view.at(chosen->x, chosen->z);
     }
     const bool inside = mouse.x >= area_x && mouse.x < area_x + area_w && mouse.y >= area_y && mouse.y < area_y + area_h;
     if (inside && io.MouseWheel != 0.0f) {
@@ -487,8 +496,10 @@ void draw_full_map(const AutomapSnapshot &map) {
         draw_legend_entry(draw, at, text, IM_COL32(250, 220, 90, 255), "Item");
     if (s.map_chests)
         draw_legend_entry(draw, at, text, IM_COL32(230, 170, 60, 255), "Chest", true);
-    if (s.map_enemies)
+    if (s.map_enemies) {
         draw_legend_entry(draw, at, text, IM_COL32(235, 50, 50, 255), "Enemy");
+        draw_legend_entry(draw, at, text, IM_COL32(255, 205, 60, 255), "Enemy with a drop");
+    }
     at.y += text;
     draw->AddText(ImGui::GetFont(), text * 0.85f, at, IM_COL32(170, 160, 140, 255),
                   "Scroll: zoom\nDrag: move\nRight click: reset\nPoint at a marker for details\nM closes the map");
