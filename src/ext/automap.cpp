@@ -18,22 +18,23 @@ float map_zoom = 1.0f;
 float map_centre_x, map_centre_z;
 bool map_centre_set;
 
-// Names as the decompilation knows them, adjusted where the English patch
-// uses a different name. Used only for the map's hover labels.
+// Item names as the English translation patch shows them in the menus (read
+// from the game's own name rows), with apostrophes the patch leaves out.
+// Used only for the map's hover labels.
 const char *const item_names[] = {
     "Short Sword", "Battle Axe", "Knight Sword", "Colichemarde", "Morningstar", "Bastard Sword",
     "Crescent Axe", "Triple Fang", "Flame Sword", "Shadow Blade", "Dragon Sword", "Moonlight Sword",
-    nullptr, "Iron Mask", "Knight Helm", "Great Helm", "Black Mask", "Mist Crown", nullptr,
-    "Breastplate", "Knight Plate", "Full Plate", "Fire Mail", "Skull Armor", "Forest Armor", nullptr,
+    nullptr, "Iron Mask", "Knight Helm", "Great Helm", "Blood Mask", "Mist Crown", nullptr,
+    "Breast Plate", "Knight Plate", "Full Plate", "Fire Mail", "Skull Armor", "Forest Armor", nullptr,
     "Small Shield", "Knight Shield", "Tower Shield", "Black Dragon", "Wind Guard", nullptr,
-    "Gauntlet", "Knight Glove", "Stone Hand", "Iron Boots", "Knight Boots", "Leg Guards", "Feather Boots",
-    "Gold", "Bloodstone", "Moonstone", "Verdite", "Medicinal Herb", "Antidote Herb", "Recovery Medicine",
-    "Dragon King Grass Leaf", "Dragon King Grass Fruit", "Light Ring", "Moon Charm", "Wind Blade Bracelet",
-    "Two-Headed Dragon Ring", "Gold Cross", "Key of the Dead", "Raito Family Key", "Watchman's Map",
-    "Dragon Chalice", "Illusion Staff", "Green Dragon Staff", "Mirror of Truth", "Dungeon Key",
-    "Dragon Crest", "Harp", "Water Seal Stone", "Earth Seal Stone", nullptr, nullptr, "Seal Candlestick",
-    "Fire Seal Stone", "Wind Seal Stone", "Holy Seal Stone", nullptr, nullptr, "Sorcerer's Map",
-    "Sorcerer's Key", "Demon King's Hand", "Salamander Statue", nullptr, nullptr, nullptr};
+    "Gauntlets", "Knight Gloves", "Stone Hands", "Iron Boots", "Knight Boots", "Leg Guards", "Feather Boots",
+    "Gold Coin", "Blood Stone", "Moon Stone", "Verdite", "Medicinal Herb", "Antidote Herb", "Recovery Medicine",
+    "Dragon Tree Leaf", "Dragon Tree Fruit", "Light Ring", "Moon Charm", "Wind Blade Bracelet",
+    "Twin Dragon Ring", "Gold Cross", "Deceased's Key", "Light Family Key", "Keeper's Map",
+    "Dragon Cup", "Phantom Rod", "Green Dragon Rod", "Truth Mirror", "Dungeon Key",
+    "Dragon Crest", "Harp", "Water Seal Stone", "Earth Seal Stone", nullptr, nullptr, "Light Tower Seal",
+    "Fire Seal Stone", "Wind Seal Stone", "Light Seal Stone", nullptr, nullptr, "Magician's Map",
+    "Magician's Key", "Magic Hand", "Sword Fan Dragon", nullptr, nullptr, nullptr};
 static_assert(sizeof item_names / sizeof item_names[0] == 80, "one name per item id");
 
 std::string item_name(u8 id) {
@@ -525,7 +526,7 @@ void automap_settings_page(bool &changed) {
     ImGui::SetItemTooltip("Off: the game keeps running, so you can walk around with the map open.");
     ImGui::SeparatorText("Exploration");
     changed |= ImGui::Checkbox("Fog of war", &s.map_fog);
-    ImGui::SetItemTooltip("On: only places you have seen are drawn (the Watchman's or Sorcerer's map\nreveals the whole floor). Off: the whole floor is always shown.");
+    ImGui::SetItemTooltip("On: only places you have seen are drawn (the Keeper's or Magician's Map\nreveals the whole floor). Off: the whole floor is always shown.");
     ImGui::SeparatorText("Extra markers (cheats)");
     changed |= ImGui::Checkbox("Items on the ground", &s.map_items);
     changed |= ImGui::Checkbox("Chests with something inside", &s.map_chests);
