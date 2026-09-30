@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <kf/game/game.h>
+#include <kf/platform/input.hpp>
 
 enum {
     ACTOR_ACTIVATION_RANGE = 28000,
@@ -1090,7 +1091,10 @@ void actor_update_current_action(void)
                     definition->collision_height,
                     ACTOR_VELOCITY_COLLISION_FLAGS);
 
-                if (result != KF_COLLISION_NONE && (result >> KF_COLLISION_KIND_SHIFT) == KF_COLLISION_DETAIL_CEILING) {
+                // Retail compares the shifted kind with the ceiling detail, so this never
+                // ran; the port option checks for a ceiling hit (upstream sushi-shi #50).
+                if (kf::fix_actor_ceiling_fall ? result == KF_COLLISION_CEILING
+                        : result != KF_COLLISION_NONE && (result >> KF_COLLISION_KIND_SHIFT) == KF_COLLISION_DETAIL_CEILING) {
                     actor->vertical_state = KF_ACTOR_VERTICAL_FALL;
                     actor->vertical_velocity = 0;
                 }

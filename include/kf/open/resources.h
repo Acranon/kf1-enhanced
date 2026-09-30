@@ -2,6 +2,7 @@
 #define KF_OPEN_RESOURCES_H
 
 #include <kf/lib/memory.h>
+#include <kf/lib/resources.h>
 
 extern KfMemoryArena memory_arena;
 
@@ -58,7 +59,7 @@ extern void opening_entity_pool_reset(void);
 extern KfOpeningEntity *opening_entity_find_by_object_id(
     KfOpeningEntity *entities, KfOpeningModelId object_id);
 extern void opening_entity_pool_load_placements(
-    const KfMapObjectPlacement *placements, s32 base_y);
+    KfResourceChunk placements, s32 base_y);
 
 extern void opening_resources_load_scene0(void);
 extern void opening_resources_load_scene1(void);

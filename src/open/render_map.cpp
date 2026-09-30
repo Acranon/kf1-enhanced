@@ -8,55 +8,48 @@ CVECTOR map_textured_primitive_color = {
 
 void render_enqueue_map(u16 object_index, const MATRIX *lights, const MATRIX *model, const kf::Projection &projection)
 {
-    KfTmdPrimitive *primitive;
-    KfTmdObject *object = tmd_get_object(tmd_context(), object_index);
-    u32 header;
-    SVECTOR *normals = (SVECTOR *)((u8 *)open_graphics_runtime.tmd_state.current_asset.data +
-        (object->normal_offset + KF_TMD_HEADER_BYTES));
-    u8 *packet;
+    const auto object = tmd_read_object(tmd_context(), object_index);
+    auto stream = tmd_primitive_stream(tmd_context(), object);
+    const auto normals = tmd_normal_bytes(tmd_context(), object);
     KfScreenVertex *vertex0;
     KfScreenVertex *vertex1;
     KfScreenVertex *vertex2;
     KfScreenVertex *vertex3;
     CVECTOR shade;
-    u32 remaining;
 
-    tmd_project_vertices(object->vertex_count, model, projection);
-    remaining = object->primitive_count;
-    packet = (u8 *)open_graphics_runtime.tmd_state.current_asset.data +
-        (object->primitive_offset + KF_TMD_HEADER_BYTES);
-    for (; remaining-- != 0;
-         packet += TMD_PACKET_BODY_BYTES(header)) {
+    tmd_project_vertices(object.vertex_count, model, projection);
+    // Bounded reads (upstream sushi-shi #49): a malformed model fails cleanly
+    // instead of reading past its resource.
+    while (stream.remaining != 0) {
+        const auto packet = tmd_next_packet(stream);
         KfScreenVertex *vertices = open_graphics_runtime.tmd_projected_vertices;
 
-        header = *(u32 *)packet;
-        packet = TMD_PACKET_BODY(packet);
-        primitive = (KfTmdPrimitive *)packet;
-        switch (tmd_packet_mode(header)) {
+        switch (packet.mode) {
         case KF_TMD_MODE_FT4: {
+            const auto p = tmd_decode_face(packet, object.vertex_count);
             s32 depth;
 
-            vertex0 = &vertices[primitive->ft4.v0];
-            vertex1 = &vertices[primitive->ft4.v1];
-            vertex2 = &vertices[primitive->ft4.v2];
+            vertex0 = &vertices[p.vertices[0]];
+            vertex1 = &vertices[p.vertices[1]];
+            vertex2 = &vertices[p.vertices[2]];
             if (render_face_winding(vertex0, vertex1, vertex2) <= 0) {
                 continue;
             }
-            vertex3 = &vertices[primitive->ft4.v3];
+            vertex3 = &vertices[p.vertices[3]];
             kf::DrawFace face {};
             CVECTOR colors[4] {};
             face.shape = kf::FaceShape::Quad;
-            face.material = render_texture_material(primitive->ft4.tsb, primitive->ft4.cba);
+            face.material = render_texture_material(p.texture_page, p.palette);
             render_face_vertex(&face, 0, vertex0);
             render_face_vertex(&face, 1, vertex1);
             render_face_vertex(&face, 2, vertex2);
             render_face_vertex(&face, 3, vertex3);
-            render_face_uv(&face, 0, primitive->texture.uv0);
-            render_face_uv(&face, 1, primitive->texture.uv1);
-            render_face_uv(&face, 2, primitive->texture.uv2);
-            render_face_uv(&face, 3, primitive->texture.uv3);
+            render_face_uv(&face, 0, p.uv[0]);
+            render_face_uv(&face, 1, p.uv[1]);
+            render_face_uv(&face, 2, p.uv[2]);
+            render_face_uv(&face, 3, p.uv[3]);
             shade = kf::render_light_normal(open_graphics_runtime.render_state.lighting, *lights,
-                normals[primitive->ft4.n0], map_textured_primitive_color, 0);
+                tmd_read_normal(normals, p.normals[0]), map_textured_primitive_color, 0);
             colors[0] = kf::render_fog_color(open_graphics_runtime.render_state.lighting, shade, vertex0->p2);
             colors[1] = kf::render_fog_color(open_graphics_runtime.render_state.lighting, shade, vertex1->p2);
             colors[2] = kf::render_fog_color(open_graphics_runtime.render_state.lighting, shade, vertex2->p2);
@@ -70,26 +63,27 @@ void render_enqueue_map(u16 object_index, const MATRIX *lights, const MATRIX *mo
             break;
         }
         case KF_TMD_MODE_FT3: {
+            const auto p = tmd_decode_face(packet, object.vertex_count);
             s32 depth;
 
-            vertex0 = &vertices[primitive->ft3.v0];
-            vertex1 = &vertices[primitive->ft3.v1];
-            vertex2 = &vertices[primitive->ft3.v2];
+            vertex0 = &vertices[p.vertices[0]];
+            vertex1 = &vertices[p.vertices[1]];
+            vertex2 = &vertices[p.vertices[2]];
             if (render_face_winding(vertex0, vertex1, vertex2) <= 0) {
                 continue;
             }
             kf::DrawFace face {};
             CVECTOR colors[4] {};
             face.shape = kf::FaceShape::Triangle;
-            face.material = render_texture_material(primitive->ft3.tsb, primitive->ft3.cba);
+            face.material = render_texture_material(p.texture_page, p.palette);
             render_face_vertex(&face, 0, vertex0);
             render_face_vertex(&face, 1, vertex1);
             render_face_vertex(&face, 2, vertex2);
-            render_face_uv(&face, 0, primitive->texture.uv0);
-            render_face_uv(&face, 1, primitive->texture.uv1);
-            render_face_uv(&face, 2, primitive->texture.uv2);
+            render_face_uv(&face, 0, p.uv[0]);
+            render_face_uv(&face, 1, p.uv[1]);
+            render_face_uv(&face, 2, p.uv[2]);
             shade = kf::render_light_normal(open_graphics_runtime.render_state.lighting, *lights,
-                normals[primitive->ft3.n0], map_textured_primitive_color, 0);
+                tmd_read_normal(normals, p.normals[0]), map_textured_primitive_color, 0);
             colors[0] = kf::render_fog_color(open_graphics_runtime.render_state.lighting, shade, vertex0->p2);
             colors[1] = kf::render_fog_color(open_graphics_runtime.render_state.lighting, shade, vertex1->p2);
             colors[2] = kf::render_fog_color(open_graphics_runtime.render_state.lighting, shade, vertex2->p2);

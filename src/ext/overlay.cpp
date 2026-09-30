@@ -106,7 +106,7 @@ void draw_settings_window() {
         return;
     }
     Settings &s = settings();
-    const char *pages[] = {"Display", "Audio", "Controls", "Map", "Interface"};
+    const char *pages[] = {"Display", "Audio", "Controls", "Gameplay", "Map", "Interface"};
     ImGui::BeginChild("pages", ImVec2(130 * applied_scale, 0), ImGuiChildFlags_Borders);
     for (const char *page : pages)
         if (ImGui::Selectable(page, std::strcmp(settings_page, page) == 0))
@@ -259,6 +259,19 @@ void draw_settings_window() {
         }
     } else if (std::strcmp(settings_page, "Map") == 0) {
         automap_settings_page(changed);
+    } else if (std::strcmp(settings_page, "Gameplay") == 0) {
+        ImGui::TextWrapped("Fixes for bugs in the original game. Turn them off to play exactly as on the PlayStation.");
+        ImGui::Spacing();
+        if (ImGui::Checkbox("Enemies fall after hitting a ceiling mid-jump", &s.fix_ceiling_fall)) {
+            apply_control_settings();
+            changed = true;
+        }
+        ImGui::SetItemTooltip("The original meant jumping enemies that bump a low ceiling to drop back down,\nbut the check never matched, so they could be left hovering.");
+        if (ImGui::Checkbox("Stereo panning for flagged sounds", &s.fix_spatial_panning)) {
+            apply_control_settings();
+            changed = true;
+        }
+        ImGui::SetItemTooltip("Some floor 5 enemy sounds are marked for a panning volume adjustment\nthat the original never applied.");
     } else if (std::strcmp(settings_page, "Controls") == 0) {
         const char *run_modes[] = {"Hold to run", "Toggle run"};
         int run_mode = s.run_toggle ? 1 : 0;

@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <kf/game/game.h>
+#include <kf/platform/input.hpp>
 
 enum {
     GAME_SEQUENCE_BUFFER_BYTES = 0x3000,
@@ -132,9 +133,10 @@ KfAudioPlaybackResult audio_play_spatial(
         angle = KF_ANGLE_FULL_TURN - angle;
     }
     angle >>= 1;
-    // Retail compares the masked high bit to 1, so this branch never runs.
-    // Preserve that quirk; changing it to a nonzero test changes panning.
-    if ((sound->tone_and_flags & KF_SOUND_PAN_NARROWING_FLAG) == 1) {
+    // Retail compares the masked high bit to 1, so this branch never runs. The
+    // port option tests it for nonzero instead (upstream sushi-shi #51).
+    if (kf::fix_spatial_panning ? (sound->tone_and_flags & KF_SOUND_PAN_NARROWING_FLAG) != 0
+                                : (sound->tone_and_flags & KF_SOUND_PAN_NARROWING_FLAG) == 1) {
         distance_gain_q7 += GAME_SOUND_PAN_NARROWING_GAIN_BOOST;
         if (distance_gain_q7 >= KF_AUDIO_MAX_VOLUME + 1) {
             distance_gain_q7 = KF_AUDIO_MAX_VOLUME;

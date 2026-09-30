@@ -12,9 +12,6 @@ enum {
     KF_RESOURCE_REUSE_PREFIX_BYTES = 16
 };
 
-#define RESOURCE_STREAM_NEXT(stream) \
-    ((stream) += *(u32 *)(stream) + KF_RESOURCE_CHUNK_HEADER_BYTES)
-
 struct KfResourceChunk {
     const u8 *data;
     std::size_t size;

@@ -5,40 +5,36 @@
 
 void render_enqueue_unlit_triangles(u16 object_index, s16 depth_bias)
 {
-    KfTmdPrimitive *polygon;
-    KfTmdObject *object = tmd_get_object(tmd_context(), object_index);
-    u32 remaining = object->primitive_count;
-    u8 *packet = (u8 *)open_graphics_runtime.tmd_state.current_asset.data +
-        (object->primitive_offset + KF_TMD_HEADER_BYTES);
+    const auto object = tmd_read_object(tmd_context(), object_index);
+    auto stream = tmd_primitive_stream(tmd_context(), object);
     KfScreenVertex *vertex0;
     KfScreenVertex *vertex1;
     KfScreenVertex *vertex2;
-    u32 header;
     s32 depth;
 
-    for (; remaining-- != 0;
-         packet += TMD_PACKET_BODY_BYTES(header)) {
-        header = *(u32 *)packet;
-        packet = TMD_PACKET_BODY(packet);
-        polygon = (KfTmdPrimitive *)packet;
-        switch (tmd_packet_mode(header)) {
+    // Bounded reads (upstream sushi-shi #49): a malformed model fails cleanly
+    // instead of reading past its resource.
+    while (stream.remaining != 0) {
+        const auto packet = tmd_next_packet(stream);
+        switch (packet.mode) {
         case KF_TMD_MODE_FT3: {
-            vertex0 = tmd_projected_vertex(polygon->ft3.v0);
-            vertex1 = tmd_projected_vertex(polygon->ft3.v1);
-            vertex2 = tmd_projected_vertex(polygon->ft3.v2);
+            const auto p = tmd_decode_face(packet, object.vertex_count);
+            vertex0 = tmd_projected_vertex(p.vertices[0]);
+            vertex1 = tmd_projected_vertex(p.vertices[1]);
+            vertex2 = tmd_projected_vertex(p.vertices[2]);
             if (render_face_winding(vertex0, vertex1, vertex2) <= 0) {
                 continue;
             }
             kf::DrawFace face {};
             CVECTOR colors[4] {};
             face.shape = kf::FaceShape::Triangle;
-            face.material = render_texture_material(polygon->ft3.tsb, polygon->ft3.cba);
+            face.material = render_texture_material(p.texture_page, p.palette);
             render_face_vertex(&face, 0, vertex0);
             render_face_vertex(&face, 1, vertex1);
             render_face_vertex(&face, 2, vertex2);
-            render_face_uv(&face, 0, polygon->texture.uv0);
-            render_face_uv(&face, 1, polygon->texture.uv1);
-            render_face_uv(&face, 2, polygon->texture.uv2);
+            render_face_uv(&face, 0, p.uv[0]);
+            render_face_uv(&face, 1, p.uv[1]);
+            render_face_uv(&face, 2, p.uv[2]);
             colors[0] = {open_graphics_runtime.floor_item_state.material.color.r, open_graphics_runtime.floor_item_state.material.color.g, open_graphics_runtime.floor_item_state.material.color.b, 0};
             depth = (((vertex0->sz + vertex1->sz + vertex2->sz) / 3)
                 >> KF_GTE_DEPTH_TO_OT_SHIFT) + depth_bias;
@@ -48,9 +44,10 @@ void render_enqueue_unlit_triangles(u16 object_index, s16 depth_bias)
             break;
         }
         case KF_TMD_MODE_F3: {
-            vertex0 = tmd_projected_vertex(polygon->f3.v0);
-            vertex1 = tmd_projected_vertex(polygon->f3.v1);
-            vertex2 = tmd_projected_vertex(polygon->f3.v2);
+            const auto p = tmd_decode_face(packet, object.vertex_count);
+            vertex0 = tmd_projected_vertex(p.vertices[0]);
+            vertex1 = tmd_projected_vertex(p.vertices[1]);
+            vertex2 = tmd_projected_vertex(p.vertices[2]);
             if (render_face_winding(vertex0, vertex1, vertex2) <= 0) {
                 continue;
             }
@@ -60,7 +57,7 @@ void render_enqueue_unlit_triangles(u16 object_index, s16 depth_bias)
             render_face_vertex(&face, 0, vertex0);
             render_face_vertex(&face, 1, vertex1);
             render_face_vertex(&face, 2, vertex2);
-            colors[0] = {polygon->f3.r, polygon->f3.g, polygon->f3.b, 0};
+            colors[0] = {p.color.r, p.color.g, p.color.b, 0};
             depth = (((vertex0->sz + vertex1->sz + vertex2->sz) / 3)
                 >> KF_GTE_DEPTH_TO_OT_SHIFT) + depth_bias;
             if (depth >= KF_SCENE_MIN_OT_DEPTH) {

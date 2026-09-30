@@ -105,6 +105,9 @@ void player_use_item(KfObjectId item_id)
             }
             index++;
         }
+        // Retail falls through into the seal-stone search here, which can read an
+        // invalid object (upstream sushi-shi #47).
+        break;
 
     case KF_ITEM_DRAGON_CHALICE:
     case KF_ITEM_WATER_SEAL_STONE:

@@ -30,17 +30,21 @@ KfOpeningEntity *opening_entity_find_by_object_id(
 }
 
 void opening_entity_pool_load_placements(
-    const KfMapObjectPlacement *placements, s32 base_y)
+    KfResourceChunk placements, s32 base_y)
 {
     KfBool16 exhausted = false;
-    const KfMapObjectPlacement *placement = placements;
 
     for (auto &entity : opening_entity_state.entities) {
-        if (exhausted == true
-            || kf_enum_decode<KfOpeningModelId>(placement->object_id) == KF_OPENING_ENTITY_FREE) {
+        if (!exhausted && placements.size == 0)
+            kf::host_fail("Truncated opening entity placements");
+        if (exhausted || placements.data[0] == kf_enum_encode<u8>(KF_OPENING_ENTITY_FREE)) {
             exhausted = true;
             entity.object_id = KF_OPENING_ENTITY_FREE;
         } else {
+            const auto *placement = resource_chunk_data<KfMapObjectPlacement>(placements, "opening entity placement");
+            if (base_y == KF_OPENING_ENTITY_FLOOR_HEIGHT &&
+                (placement->tile_x >= KF_MAP_COLUMNS || placement->tile_z >= KF_MAP_ROWS))
+                kf::host_fail("Opening entity placement exceeds the floor grid");
             entity.object_id = kf_enum_decode<KfOpeningModelId>(placement->object_id);
             entity.cell_x = placement->tile_x;
             entity.cell_z = placement->tile_z;
@@ -60,7 +64,8 @@ void opening_entity_pool_load_placements(
             } else {
                 entity.position.vy = base_y + placement->local_y;
             }
-            placement++;
+            placements.data += sizeof(KfMapObjectPlacement);
+            placements.size -= sizeof(KfMapObjectPlacement);
         }
     }
 }

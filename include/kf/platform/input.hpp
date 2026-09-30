@@ -41,4 +41,9 @@ inline int player_run_speed = 160;
 inline bool player_run_toggle = false;
 // Camera pitch limit in 1/4096 turns; the original is 191 (about 17 degrees).
 inline s32 player_pitch_limit = 191;
+// Fixes for original-game bugs whose branches never ran (upstream sushi-shi #50, #51).
+// Enemies that hit a ceiling mid-jump start falling again.
+inline bool fix_actor_ceiling_fall = true;
+// Sounds flagged for narrower stereo panning get their volume adjustment.
+inline bool fix_spatial_panning = true;
 }

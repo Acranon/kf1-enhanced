@@ -49,6 +49,8 @@ struct Settings {
     int run_speed = 160;        // percent of walking speed while Shift is held
     bool run_toggle = false;    // Shift toggles running instead of being held
     int look_limit = 70;        // degrees the camera may tilt up or down (original: 17)
+    bool fix_ceiling_fall = true;   // bug fix: enemies fall after hitting a ceiling mid-jump
+    bool fix_spatial_panning = true; // bug fix: flagged sounds get their panning adjustment
     bool minimap = true;
     int minimap_corner = 1;     // 0 top right, 1 bottom right, 2 top left, 3 bottom left
     int minimap_size = 28;      // percent of the picture's height

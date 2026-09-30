@@ -103,6 +103,9 @@ void settings_load() {
     current.run_speed = static_cast<int>(read_number(controls, "run_speed", current.run_speed));
     current.run_toggle = read_bool(controls, "run_toggle", current.run_toggle);
     current.look_limit = static_cast<int>(read_number(controls, "look_limit", current.look_limit));
+    const cJSON *gameplay = cJSON_GetObjectItemCaseSensitive(document, "gameplay");
+    current.fix_ceiling_fall = read_bool(gameplay, "fix_ceiling_fall", current.fix_ceiling_fall);
+    current.fix_spatial_panning = read_bool(gameplay, "fix_spatial_panning", current.fix_spatial_panning);
     const cJSON *map = cJSON_GetObjectItemCaseSensitive(document, "map");
     current.minimap = read_bool(map, "minimap", current.minimap);
     current.minimap_corner = std::clamp(static_cast<int>(read_number(map, "minimap_corner", current.minimap_corner)), 0, 3);
@@ -160,6 +163,9 @@ void settings_save_if_dirty() {
     write_value(controls, "run_speed", cJSON_CreateNumber(current.run_speed));
     write_value(controls, "run_toggle", cJSON_CreateBool(current.run_toggle));
     write_value(controls, "look_limit", cJSON_CreateNumber(current.look_limit));
+    cJSON *gameplay = object_entry(document, "gameplay");
+    write_value(gameplay, "fix_ceiling_fall", cJSON_CreateBool(current.fix_ceiling_fall));
+    write_value(gameplay, "fix_spatial_panning", cJSON_CreateBool(current.fix_spatial_panning));
     cJSON *map = object_entry(document, "map");
     write_value(map, "minimap", cJSON_CreateBool(current.minimap));
     write_value(map, "minimap_corner", cJSON_CreateNumber(current.minimap_corner));
@@ -260,6 +266,8 @@ void apply_control_settings() {
     // Degrees to 1/4096 turns; never tighter than the original limit, and short of straight up/down.
     const int degrees = std::clamp(current.look_limit, 17, 85);
     player_pitch_limit = std::max(191, degrees * 4096 / 360);
+    fix_actor_ceiling_fall = current.fix_ceiling_fall;
+    fix_spatial_panning = current.fix_spatial_panning;
 }
 
 void apply_audio_settings() {
