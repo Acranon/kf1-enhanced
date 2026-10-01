@@ -57,7 +57,9 @@ CONTROLS
   Settings overlay ..... F1
   Fullscreen ........... F11, Alt+Enter
 
-Every enhancement can be switched off in the F1 settings.
+Every enhancement can be switched off in the F1 settings, or all at once with
+Classic mode at the top of F1 > Settings (your own settings come back when you
+turn it off).
 
 
 FILES
