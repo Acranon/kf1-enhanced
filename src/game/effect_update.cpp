@@ -163,6 +163,11 @@ void effect_update_orbiting_projectile(s32 orbit_radius, KfEffectPhase phase_lim
     }
 }
 
+const KfFloorDeformSegment &effect_floor_deform_segment(s32 segment_index)
+{
+    return floor_deform_segments[segment_index];
+}
+
 void effect_floor_deform_line(s32 segment_index, s32 progress_start, s32 progress_step)
 {
     KfFloorDeformSegment *segment = &floor_deform_segments[segment_index];

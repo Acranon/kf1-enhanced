@@ -357,6 +357,8 @@ extern int effect_magic_power(KfEffectRecord *effect);
 extern void effect_update_swinging_hazard(SVECTOR *probe_offset, KfEffectPhase phase_limit);
 extern void effect_update_orbiting_projectile(s32 orbit_radius, KfEffectPhase phase_limit);
 extern void effect_floor_deform_line(s32 segment_index, s32 progress_start, s32 progress_step);
+// PC extension (automap): the floor lines the Harp raises.
+extern const KfFloorDeformSegment &effect_floor_deform_segment(s32 segment_index);
 extern void effect_scatter_triple(KfEffectDirectionWords *velocity);
 extern void effect_rotate_scale_offset_y(SVECTOR *offset, VECTOR *output, s16 angle, s32 scale);
 extern void effect_spawn_ground_trail(u8 id, KfEffectRecord *parent_effect, s16 angle, s32 distance);

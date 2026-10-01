@@ -96,6 +96,11 @@ void find_chasms(std::array<bool, KF_MAP_CELL_COUNT> &chasm, int player_cell)
     }
 }
 
+// The Harp's bridges per floor: segments of effect_floor_deform_line, as
+// player_use_item raises them (Floor 2: 0-3, Floor 3: 4).
+struct HarpSegments { int floor, first, count; };
+constexpr HarpSegments harp_segments[] = {{2, 0, 4}, {3, 4, 1}};
+
 // Doors swing or lift while animating, so remember each door's closed yaw.
 u16 door_closed_yaw[KF_MAP_OBJECT_CAPACITY];
 
@@ -143,7 +148,7 @@ void automap_publish(void)
                            ? player_cell_z * KF_MAP_COLUMNS + player_cell_x : -1);
     for (int i = 0; i < KF_MAP_ROWS * KF_MAP_COLUMNS; ++i) {
         const auto attribute = map_cell_attribute_grid.linear[i];
-        snapshot.cells[i] = chasm[i] ? kf::AutomapCell::Void : cell_kind(map_collision_grid.linear[i], attribute);
+        snapshot.cells[i] = chasm[i] ? kf::AutomapCell::Chasm : cell_kind(map_collision_grid.linear[i], attribute);
         auto hazard = kf::AutomapHazard::None;
         if (attribute == KF_MAP_ATTRIBUTE_PITFALL)
             hazard = kf::AutomapHazard::Pit;
@@ -155,6 +160,26 @@ void automap_publish(void)
         if (attribute == KF_MAP_ATTRIBUTE_WARP) {
             const int x = i % KF_MAP_COLUMNS, z = i / KF_MAP_COLUMNS;
             add(kf::AutomapMarkerKind::Warp, x + 0.5f, z + 0.5f, warp_label(floor, x, z));
+        }
+    }
+
+    for (const auto &harp : harp_segments) {
+        if (harp.floor != floor)
+            continue;
+        for (int s = harp.first; s < harp.first + harp.count; ++s) {
+            const auto &segment = effect_floor_deform_segment(s);
+            int x = segment.column, z = segment.row;
+            for (int k = 0; k < segment.cell_count; ++k) {
+                const int i = z * KF_MAP_COLUMNS + x;
+                // Raised once it is within a step of the walkway it joins.
+                const bool raised = map_floor_height_grid.linear[i] + 6 >= segment.end_height;
+                snapshot.cells[i] = raised ? kf::AutomapCell::HarpBridgeRaised : kf::AutomapCell::HarpBridge;
+                x += static_cast<s8>(segment.column_step);
+                z += static_cast<s8>(segment.row_step);
+            }
+            const float half = (segment.cell_count - 1) * 0.5f;
+            add(kf::AutomapMarkerKind::HarpBridge, segment.column + 0.5f + static_cast<s8>(segment.column_step) * half,
+                segment.row + 0.5f + static_cast<s8>(segment.row_step) * half);
         }
     }
 

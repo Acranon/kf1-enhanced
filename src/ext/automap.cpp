@@ -137,6 +137,22 @@ void draw_cells(const MapView &view, const AutomapSnapshot &map, int min_x, int 
                 view.draw->AddRectFilled(d, b, fill);
                 view.draw->AddRect(d, b, door_colour, 0.0f, 0, std::max(1.0f, view.scale * 0.1f));
                 break;
+            case AutomapCell::Chasm:
+            case AutomapCell::HarpBridge:
+                // Grey with diagonal hatching that joins into stripes across cells.
+                view.draw->AddRectFilled(d, b, view.colour(46, 46, 50, 0.92f));
+                if (view.scale >= 5.0f)
+                    view.draw->AddLine(a, c, view.colour(78, 78, 84, 0.9f), std::max(1.0f, view.scale * 0.08f));
+                if (cell == AutomapCell::HarpBridge) {
+                    // Lowered: an outline where the bridge will rise.
+                    const float inset = view.scale * 0.12f;
+                    view.draw->AddRect(ImVec2(d.x + inset, d.y + inset), ImVec2(b.x - inset, b.y - inset),
+                                       view.colour(70, 170, 190, 0.85f), 0.0f, 0, std::max(1.0f, view.scale * 0.1f));
+                }
+                break;
+            case AutomapCell::HarpBridgeRaised:
+                view.draw->AddRectFilled(d, b, view.colour(60, 140, 160, 0.95f));
+                break;
             default:
                 view.draw->AddRectFilled(d, b, fill);
                 break;
@@ -171,7 +187,8 @@ bool marker_known(const AutomapSnapshot &map, const AutomapMarker &marker) {
 }
 
 bool marker_shown(const AutomapSnapshot &map, const AutomapMarker &marker) {
-    return marker.kind != AutomapMarkerKind::Door && marker_known(map, marker);
+    return marker.kind != AutomapMarkerKind::Door && marker.kind != AutomapMarkerKind::HarpBridge
+        && marker_known(map, marker);
 }
 
 // People, by character id, as their own dialogue names them (TALK/Cxx images).
@@ -235,6 +252,8 @@ std::string marker_description(const AutomapMarker &marker) {
     }
     case AutomapMarkerKind::Enemy:
         return marker.items[0] != automap_no_item ? "Enemy\nDrops: " + item_name(marker.items[0]) : "Enemy";
+    case AutomapMarkerKind::HarpBridge:
+        return "Harp bridge\nPlay the Harp nearby to raise it for a short time";
     }
     return {};
 }
@@ -344,6 +363,7 @@ void draw_markers(const MapView &view, const AutomapSnapshot &map, bool labels) 
             }
             break;
         case AutomapMarkerKind::Door:
+        case AutomapMarkerKind::HarpBridge:
             break;
         }
     }
@@ -504,6 +524,8 @@ void draw_full_map(const AutomapSnapshot &map) {
     draw_legend_entry(draw, at, text, IM_COL32(120, 230, 120, 255), "Person");
     draw_legend_entry(draw, at, text, IM_COL32(120, 60, 40, 255), "Pit / trap", true);
     draw_legend_entry(draw, at, text, IM_COL32(60, 110, 50, 255), "Poison", true);
+    draw_legend_entry(draw, at, text, IM_COL32(70, 70, 76, 255), "Chasm (fatal drop)", true);
+    draw_legend_entry(draw, at, text, IM_COL32(60, 140, 160, 255), "Harp bridge", true);
     if (s.map_items)
         draw_legend_entry(draw, at, text, IM_COL32(250, 220, 90, 255), "Item");
     if (s.map_chests)

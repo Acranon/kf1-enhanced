@@ -121,7 +121,9 @@ original PlayStation presentation.
   while open (or not, if you prefer to walk with it open). Fog of war shows only
   what you have seen (or turn it off); carrying the Keeper's or Magician's Map
   reveals the whole floor. Doors, warps (labelled with their floor), save points,
-  fountains and people are marked once seen. Items, chests and enemies can be
+  fountains and people are marked once seen. Chasms (pits and trenches where a
+  fall is fatal) are hatched grey, and the bridges the Harp raises are teal:
+  an outline while lowered, solid while up. Items, chests and enemies can be
   shown too, as can the key each locked door or chest needs; those are off by
   default because they are cheats. On the full map, scroll to zoom, drag to move
   and point at a marker to see what it is (a chest lists its contents).

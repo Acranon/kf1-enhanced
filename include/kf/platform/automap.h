@@ -18,7 +18,10 @@ enum class AutomapCell : u8 {
     // Diagonal half cells, named by their walkable half in cell-local x/z (0..1).
     HalfXGeZ, HalfSumLe, HalfZGeX, HalfSumGe,
     Door,       // a closed door's gap
-    DoorOpen    // an open door's gap
+    DoorOpen,   // an open door's gap
+    Chasm,      // walkable, but only by a fatal fall (a pit or trench)
+    HarpBridge, // a bridge the Harp raises, lowered into its chasm
+    HarpBridgeRaised
 };
 
 enum class AutomapHazard : u8 { None, Pit, Poison, Bottomless };
@@ -27,7 +30,9 @@ enum class AutomapMarkerKind : u8 {
     // Standard: shown once their cell has been seen.
     Door, LockedDoor, Warp, SavePoint, Fountain, Npc,
     // Cheats: shown only when enabled in the settings.
-    Item, Chest, Enemy
+    Item, Chest, Enemy,
+    // Hover only: the middle of a Harp bridge.
+    HarpBridge
 };
 
 // Warp labels: 1..5 lead to that floor.
