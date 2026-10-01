@@ -40,6 +40,12 @@ void host_wait_update(UpdatePacer &pacer);
 Renderer *host_renderer();
 // A short message shown over the picture for a couple of seconds (PC overlay).
 void host_show_message(const char *text);
+// PC extension: the item in the menu's preview panel for the frame being built,
+// for the overlay's item description. top: the first logical row free below
+// the panel's stats. Cleared by host_begin_frame.
+struct MenuPreviewItem { int item = -1; s32 top = 0; };
+void host_menu_preview_item(u8 item_id, s32 top);
+MenuPreviewItem host_menu_preview();
 void host_present_faces(const FaceList *faces);
 void host_begin_frame();
 void host_enqueue_face(const DrawFace &face);

@@ -127,6 +127,7 @@ void settings_load() {
     current.pause_when_open = read_bool(overlay, "pause_when_open", current.pause_when_open);
     current.ui_scale = static_cast<float>(read_number(overlay, "ui_scale", current.ui_scale));
     current.ui_font = read_string(overlay, "font", current.ui_font);
+    current.item_descriptions = read_bool(overlay, "item_descriptions", current.item_descriptions);
 }
 
 void settings_mark_dirty() {
@@ -191,6 +192,7 @@ void settings_save_if_dirty() {
     write_value(overlay, "pause_when_open", cJSON_CreateBool(current.pause_when_open));
     write_value(overlay, "ui_scale", cJSON_CreateNumber(current.ui_scale));
     write_value(overlay, "font", cJSON_CreateString(current.ui_font.c_str()));
+    write_value(overlay, "item_descriptions", cJSON_CreateBool(current.item_descriptions));
     char *text = cJSON_Print(document);
     if (!text)
         return;
@@ -236,6 +238,7 @@ const Settings &effective_settings() {
     classic.fix_ceiling_fall = false;
     classic.fix_spatial_panning = false;
     classic.minimap = false;
+    classic.item_descriptions = false;
     return classic;
 }
 

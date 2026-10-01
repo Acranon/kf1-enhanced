@@ -749,7 +749,15 @@ void host_show_message(const char *text) {
 #endif
 }
 
+// Written while a frame is built and read when the overlay draws over it.
+static MenuPreviewItem menu_preview_building, menu_preview_shown;
+
+void host_menu_preview_item(u8 item_id, s32 top) { menu_preview_building = {item_id, top}; }
+
+MenuPreviewItem host_menu_preview() { return menu_preview_shown; }
+
 void host_begin_frame() {
+    menu_preview_building = {};
     host.frame_faces.clear();
     host.frame_light_count = 0;
     host.frame_poses.clear();
@@ -1216,6 +1224,7 @@ void host_light_occluders(const u8 *solid, int columns, int rows, float tile_siz
 }
 
 void host_present_faces(const FaceList *faces) {
+    menu_preview_shown = menu_preview_building;
 #if KF_EXT
     ext::game_frame(static_cast<int>(host.input_context));
 #endif

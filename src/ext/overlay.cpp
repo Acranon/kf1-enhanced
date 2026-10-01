@@ -457,6 +457,8 @@ void draw_settings_window() {
         }
     } else {
         changed |= ImGui::Checkbox("Pause the game while the overlay is open", &s.pause_when_open);
+        changed |= ImGui::Checkbox("Item descriptions in the game's menus", &s.item_descriptions);
+        ImGui::SetItemTooltip("Under the item preview: what the item does, such as healing or an equipment effect.");
         // Applied when the edit finishes, so the window does not resize under the cursor.
         bool committed = false;
         slider_input("Interface scale", &s.ui_scale, 0.75f, 2.5f, "%.2f", 0.05f, &committed);
@@ -746,6 +748,7 @@ void draw(int width, int height) {
     // After mod HUDs, so the full map covers them.
     mods_draw_hud();
     automap_draw(last_context);
+    item_description_draw();
     draw_message(width, height);
     if (settings().show_fps) {
         char text[32];

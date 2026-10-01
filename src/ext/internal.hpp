@@ -69,6 +69,7 @@ struct Settings {
     bool map_enemies = false;
     bool map_key_hints = false; // cheat: name the key a locked door or chest needs
     float ui_scale = 1.0f;
+    bool item_descriptions = true;  // what an item does, in the game's item menus
     std::string ui_font;        // empty: first available system font
 };
 Settings &settings();
@@ -84,6 +85,11 @@ void apply_display_settings();
 void apply_audio_settings();
 void apply_control_settings();
 void apply_render_settings();   // also on window resize
+
+// What an item does (effects only; the menus show equipment stats), or empty.
+std::string item_description(std::uint8_t id);
+// Draws the description of the item in the game menu's preview panel, if any.
+void item_description_draw();
 
 // ---- automap ----
 void automap_draw(int input_context);   // minimap or full map, before the overlay windows

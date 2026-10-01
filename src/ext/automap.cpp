@@ -220,8 +220,10 @@ std::string marker_description(const AutomapMarker &marker) {
         return marker.label ? "Fountain" : "Fountain (dry)";
     case AutomapMarkerKind::Npc:
         return person_name(marker.label);
-    case AutomapMarkerKind::Item:
-        return item_name(marker.items[0]);
+    case AutomapMarkerKind::Item: {
+        const std::string effect = item_description(marker.items[0]);
+        return effect.empty() ? item_name(marker.items[0]) : item_name(marker.items[0]) + "\n" + effect;
+    }
     case AutomapMarkerKind::Chest: {
         std::string text = marker.label != automap_unlocked ? "Locked chest" : "Chest";
         for (u8 item : marker.items)
@@ -257,7 +259,9 @@ void draw_hover(const MapView &view, const AutomapSnapshot &map, ImVec2 mouse, f
         return;
     const std::string text = marker_description(*best);
     ImFont *font = ImGui::GetFont();
-    const ImVec2 extent = font->CalcTextSizeA(text_size, FLT_MAX, 0.0f, text.c_str());
+    // Item descriptions wrap at about 32 characters.
+    const float wrap = text_size * 16.0f;
+    const ImVec2 extent = font->CalcTextSizeA(text_size, FLT_MAX, wrap, text.c_str());
     const float pad = text_size * 0.4f;
     ImVec2 at(mouse.x + text_size, mouse.y + text_size * 0.6f);
     const ViewRect game = game_view();
@@ -269,7 +273,7 @@ void draw_hover(const MapView &view, const AutomapSnapshot &map, ImVec2 mouse, f
                              IM_COL32(20, 17, 12, 235), pad);
     view.draw->AddRect(ImVec2(at.x - pad, at.y - pad), ImVec2(at.x + extent.x + pad, at.y + extent.y + pad),
                        IM_COL32(200, 180, 130, 255), pad);
-    view.draw->AddText(font, text_size, at, IM_COL32(240, 230, 210, 255), text.c_str());
+    view.draw->AddText(font, text_size, at, IM_COL32(240, 230, 210, 255), text.c_str(), nullptr, wrap);
 }
 
 void draw_label(const MapView &view, ImVec2 centre, float size, const char *text, ImU32 colour) {

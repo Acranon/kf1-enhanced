@@ -183,7 +183,7 @@ if(NOT EMSCRIPTEN)
   file(GLOB KF_LUA_SOURCES ${CMAKE_SOURCE_DIR}/vendor/lua/l*.c)
   list(FILTER KF_LUA_SOURCES EXCLUDE REGEX "/(lua|luac|ltests|onelua)\\.c$")
   add_library(kf_ext STATIC
-    src/ext/console.cpp src/ext/settings.cpp src/ext/mods.cpp src/ext/overlay.cpp src/ext/automap.cpp
+    src/ext/console.cpp src/ext/settings.cpp src/ext/mods.cpp src/ext/overlay.cpp src/ext/automap.cpp src/ext/item_text.cpp
     ${KF_IMGUI}/imgui.cpp ${KF_IMGUI}/imgui_draw.cpp ${KF_IMGUI}/imgui_tables.cpp ${KF_IMGUI}/imgui_widgets.cpp
     ${KF_IMGUI}/backends/imgui_impl_sdl3.cpp ${KF_IMGUI}/backends/imgui_impl_opengl3.cpp
     ${KF_LUA_SOURCES} vendor/cjson/cJSON.c)

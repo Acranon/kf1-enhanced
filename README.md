@@ -111,6 +111,10 @@ original PlayStation presentation.
 - Equipment stats beside the item picture in menus and shops, and on the equip
   screens the current totals next to the totals with the highlighted item
   (green if better, red if worse).
+- Item descriptions under the item picture: what consumables heal or cure, what
+  keys and quest items are for, and equipment effects the stats do not show
+  (regeneration, curses, sword magic, immunities). Effects are taken from the
+  game's own rules and data, so they match what actually happens.
 - Quick save and load (F2/F4) using the game's own save format, kept separate
   from the three normal save slots.
 - Automap: a north-up minimap and a full floor map (M), which pauses the game

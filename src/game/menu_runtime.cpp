@@ -1291,8 +1291,11 @@ bool menu_stats_available(KfObjectId item_id)
 }
 
 // Draws the rows from y down; returns false when the item has nothing to show.
-bool menu_draw_item_stats(KfObjectId item_id, s32 y)
+// bottom (optional) receives the row below the last one drawn.
+bool menu_draw_item_stats(KfObjectId item_id, s32 y, s32 *bottom = nullptr)
 {
+    if (bottom)
+        *bottom = y;
     if (kf::classic_mode)
         return false;
     const MenuItemSlot compare_slot = menu_category_slot(menu_stats_compare);
@@ -1334,6 +1337,8 @@ bool menu_draw_item_stats(KfObjectId item_id, s32 y)
         }
         gs.position.y += MENU_STATS_ROW_STEP;
     }
+    if (bottom)
+        *bottom = gs.position.y;
     return any;
 }
 }
@@ -1351,9 +1356,11 @@ void menu_item_model_preview(KfObjectId item_id)
     MATRIX light_result;
 
     // Stats share the panel: the model moves right and a little further away.
+    s32 stats_bottom = MENU_ITEM_PREVIEW_NAME_Y + 2 * MENU_ITEM_PREVIEW_LINE_HEIGHT;
     const bool stats = menu_stats_available(item_id)
-        && menu_draw_item_stats(item_id, MENU_ITEM_PREVIEW_NAME_Y + 2 * MENU_ITEM_PREVIEW_LINE_HEIGHT + 2);
+        && menu_draw_item_stats(item_id, stats_bottom + 2, &stats_bottom);
     if (item_id != KF_OBJECT_NONE) {
+        kf::host_menu_preview_item(kf_enum_encode<u8>(item_id), stats_bottom);
         rotation.t[0] = stats ? MENU_STATS_MODEL_X : MENU_ITEM_PREVIEW_TRANSLATION_X;
         rotation.t[1] = stats ? MENU_STATS_MODEL_Y : MENU_ITEM_PREVIEW_TRANSLATION_Y;
         rotation.t[2] = stats ? MENU_STATS_MODEL_Z : MENU_ITEM_PREVIEW_TRANSLATION_Z;
@@ -1414,7 +1421,9 @@ void menu_draw_item_detail(KfObjectId item_id, KfItemStockBank shop_bank, KfTrad
     }
 
     // Shops show the price and owned rows first, then the item's stats.
-    const bool stats = menu_draw_item_stats(item_id, MENU_ITEM_PREVIEW_NAME_Y + 3 * MENU_ITEM_PREVIEW_LINE_HEIGHT + 2);
+    s32 stats_bottom = MENU_ITEM_PREVIEW_NAME_Y + 3 * MENU_ITEM_PREVIEW_LINE_HEIGHT;
+    const bool stats = menu_draw_item_stats(item_id, stats_bottom + 2, &stats_bottom);
+    kf::host_menu_preview_item(kf_enum_encode<u8>(item_id), stats_bottom);
     rotation.t[0] = stats ? MENU_STATS_MODEL_X : MENU_ITEM_PREVIEW_TRANSLATION_X;
     rotation.t[1] = stats ? MENU_STATS_MODEL_Y : MENU_ITEM_PREVIEW_TRANSLATION_Y;
     rotation.t[2] = stats ? MENU_STATS_MODEL_Z : MENU_ITEM_PREVIEW_TRANSLATION_Z;
