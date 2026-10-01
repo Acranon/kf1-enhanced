@@ -540,11 +540,13 @@ void automap_draw(int input_context) {
         full_map_open = false;
         return;
     }
-    // KF_TEST_FULLMAP: open the full map once in game, as M would (automated captures).
-    static bool test_open = std::getenv("KF_TEST_FULLMAP") != nullptr;
-    if (test_open) {
+    // KF_TEST_FULLMAP[=<frames>]: open the full map once in game, as M would,
+    // optionally after that many drawn frames (automated captures).
+    static const char *test_open = std::getenv("KF_TEST_FULLMAP");
+    static int test_frames;
+    if (test_open && ++test_frames >= std::atoi(test_open)) {
         full_map_open = true;
-        test_open = false;
+        test_open = nullptr;
     }
     if (full_map_open)
         draw_full_map(map);

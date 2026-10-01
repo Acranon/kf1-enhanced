@@ -1,6 +1,7 @@
 // PC extension: publishes the current floor for the automap (kf/platform/automap.h).
 #include <kf/game/game.h>
 #include <kf/platform/automap.h>
+#include <array>
 
 namespace {
 constexpr float tile_size = KF_MAP_TILE_SIZE;
@@ -39,6 +40,59 @@ kf::AutomapCell cell_kind(KfMapCellKind kind, KfMapAttribute attribute)
     case KF_MAP_CELL_Z_GE_X: return kf::AutomapCell::HalfZGeX;
     case KF_MAP_CELL_SUM_GE_SIZE: return kf::AutomapCell::HalfSumGe;
     default: return kf::AutomapCell::Floor;
+    }
+}
+
+// Falling more than this kills (player_update_floor_motion), in floor height units.
+constexpr int fatal_drop_steps = 3000 / KF_MAP_HEIGHT_STEP;
+
+// Marks chasms: walkable cells that can only be entered by a fatal fall, such as
+// the trenches under Floor 2's bridges. Cells join when their floors differ by
+// less than a fatal drop; a group with floor a fatal drop higher beside it and
+// none a fatal drop lower is a chasm, unless the player stands in it. (A
+// walkway between pits is beside lower floor, so it stays.)
+void find_chasms(std::array<bool, KF_MAP_CELL_COUNT> &chasm, int player_cell)
+{
+    static std::array<s16, KF_MAP_CELL_COUNT> group;
+    static std::array<u16, KF_MAP_CELL_COUNT> queue;
+    group.fill(-1);
+    chasm.fill(false);
+    auto walkable = [](int i) { return map_collision_grid.linear[i] != KF_MAP_CELL_BLOCKED; };
+    auto height = [](int i) { return static_cast<int>(map_floor_height_grid.linear[i]); };
+    s16 groups = 0;
+    for (int start = 0; start < KF_MAP_CELL_COUNT; ++start) {
+        if (!walkable(start) || group[start] >= 0)
+            continue;
+        int head = 0, tail = 0;
+        bool below_fatal_edge = false, above_fatal_edge = false, has_player = false;
+        group[start] = groups;
+        queue[tail++] = static_cast<u16>(start);
+        while (head < tail) {
+            const int i = queue[head++];
+            has_player |= i == player_cell;
+            const int x = i % KF_MAP_COLUMNS, z = i / KF_MAP_COLUMNS;
+            const int next[4][2] = {{x - 1, z}, {x + 1, z}, {x, z - 1}, {x, z + 1}};
+            for (const auto &[nx, nz] : next) {
+                if (nx < 0 || nz < 0 || nx >= KF_MAP_COLUMNS || nz >= KF_MAP_ROWS)
+                    continue;
+                const int n = nz * KF_MAP_COLUMNS + nx;
+                if (!walkable(n))
+                    continue;
+                const int rise = height(n) - height(i);
+                if (rise >= fatal_drop_steps) {
+                    below_fatal_edge = true;
+                } else if (rise <= -fatal_drop_steps) {
+                    above_fatal_edge = true;
+                } else if (group[n] < 0) {
+                    group[n] = groups;
+                    queue[tail++] = static_cast<u16>(n);
+                }
+            }
+        }
+        if (below_fatal_edge && !above_fatal_edge && !has_player)
+            for (int k = 0; k < tail; ++k)
+                chasm[queue[k]] = true;
+        ++groups;
     }
 }
 
@@ -83,9 +137,13 @@ void automap_publish(void)
         snapshot.markers[snapshot.marker_count++] = marker;
     };
 
+    static std::array<bool, KF_MAP_CELL_COUNT> chasm;
+    const int player_cell_x = static_cast<int>(snapshot.player_x), player_cell_z = static_cast<int>(snapshot.player_z);
+    find_chasms(chasm, player_cell_x >= 0 && player_cell_x < KF_MAP_COLUMNS && player_cell_z >= 0 && player_cell_z < KF_MAP_ROWS
+                           ? player_cell_z * KF_MAP_COLUMNS + player_cell_x : -1);
     for (int i = 0; i < KF_MAP_ROWS * KF_MAP_COLUMNS; ++i) {
         const auto attribute = map_cell_attribute_grid.linear[i];
-        snapshot.cells[i] = cell_kind(map_collision_grid.linear[i], attribute);
+        snapshot.cells[i] = chasm[i] ? kf::AutomapCell::Void : cell_kind(map_collision_grid.linear[i], attribute);
         auto hazard = kf::AutomapHazard::None;
         if (attribute == KF_MAP_ATTRIBUTE_PITFALL)
             hazard = kf::AutomapHazard::Pit;
